@@ -1,0 +1,811 @@
+---
+title: "victordiazb-A3"
+author: "victordiazb"
+date: "Mayo 2023"
+output:
+  html_document:    
+    highlight: default
+    number_sections: no
+    theme: cosmo
+    toc: yes
+    toc_title: "Indice"
+    toc_depth: 2
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+    toc_title: "Indice"
+    toc_depth: 2
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Importar paquetes y librerias
+if(!require('caret')) install.packages('caret'); library('caret')
+if(!require('pROC')) install.packages('pROC'); library('pROC')
+```
+
+# Introducción
+
+En esta actividad usaremos el conjunto de datos *Happiness_clean*, es decir el fichero utilizado en la actividad anterior A2.
+Recordamos que la base de datos contiene información sobre diferentes factores que se emplean para evaluar la felicidad en distintos países del mundo.
+Las variables incluidas en el conjunto de datos son:
+
+-   ***Country***: Nombre del país.
+
+-   ***Region***: Región a la que pertenece el país.
+
+-   ***HR***: Clasificación del país, basado en la puntuación de felicidad.
+
+-   ***HS***: Media muestral por país, a la pregunta: ¿Cómo calificarías tu felicidad en escala de 1 de a 10?
+
+-   ***LCI***: Límite inferior del intervalo de confianza de la media de Happiness.Score.
+
+-   ***UCI***: Límite superior del intervalo de confianza de la media de Happiness.Score.
+
+-   ***GpC***: Indicador económico del país.
+
+-   ***Family***: Familia y entorno social.
+    Promedio por país, a la pregunta: ¿tiene familiares o amigos con los que pueda contar?
+
+-   ***LE***: Salud y esperanza de vida en cada país.
+    Datos provenientes de la encuesta de salud.
+
+-   ***Freedom***: Libertad.
+    Promedio por país, a la pregunta: ¿condidera o no que tiene libertad para actuar?
+
+-   ***GC***: Corrupción.
+    Percepción del estado de corrupción del pais (política y negocios).
+
+-   ***Generosity***: Generosidad.
+    Promedio por país, a la pregunta: ¿Ha donado o no dinero para caridad, el pasado mes?
+
+Primero se estudiarán las posibles relaciones lineales entre el nivel de felicidad de los países HS y diferentes variables independientes.
+En la segunda parte de la actividad se buscarán los posibles factores de riesgo o protección que contribuyen o no, a la percepción de mayor felicidad.
+
+Cargamos los datos de igual modo que en la actividad anterior y visualizamos su estructura.
+
+```{r}
+# Cargar datos
+path = 'Happiness-clean.csv'
+data <- read.csv(path, row.names=NULL)
+```
+
+```{r}
+# Mostrar estructura de datos
+print(str(data))
+print(head(data))
+```
+
+# 1. Regresión lineal
+
+Antes de proceder al análisis, vamos a cambiar las variables character a factor y las de tipo integer a numeric.
+
+```{r}
+for(i in colnames(data)){
+  # Cambiar variables character a factor
+  if(is.character(data[[i]])){
+    data[[i]] <- as.factor((data[[i]]))
+  }
+  # Cambiar variables integer a numeric
+  if(is.integer(data[[i]])){
+    data[[i]] <- as.numeric((data[[i]]))
+  }
+}
+
+# Mostrar estructura de datos
+print(str(data))
+```
+
+## 1.1. Modelo de regresión lineal (variables cuantitativas)
+
+### a) Family, LE y Freedom
+
+Se quiere estudiar si las variables *Family, LE y Freedom* influyen o no en la percepción de la felicidad.
+Estimaremos por mínimos cuadrados ordinarios un modelo lineal que explique la variable HS en función de dichas variables explicativas.
+
+Para ello, utilizaremos la función *lm()*, que se utiliza para ajustar modelos lineales ordinarios, también conocidos como modelos de regresión lineal.
+Estos modelos asumen que los errores siguen una distribución normal y se ajustan utilizando el método de mínimos cuadrados ordinarios (OLS, por sus siglas en inglés).
+Estos son adecuados cuando se trabaja con variables de respuesta continua.
+
+```{r}
+# Ajustar el modelo lineal 
+modelo <- lm(HS ~ Family + LE + Freedom, data = data)
+
+# Obtener los resultados
+summary(modelo)
+```
+
+El modelo obtenido tiene un coeficiente de determinación ($R^2$) de 0.762, lo que indica que las variables explicativas Family, LE y Freedom explican aproximadamente el 76% de la variación en la percepción de la felicidad (HS).
+Este valor es relativamente alto, lo que sugiere que el modelo es capaz de explicar una gran proporción de la variabilidad en la variable dependiente.
+
+Además, el valor de F estadístico es significativo con un valor p muy bajo (2.2e-16), menor al nivel de significancia generalmente utilizado de 0.05, lo que indica que el modelo en su conjunto es significativo.
+
+En cuanto a los coeficientes de regresión, se observa que **todas las variables explicativas son significativas** a un nivel de significación del 5%.
+Específicamente, para una unidad de aumento en Family, la percepción de felicidad aumenta en 1.4878 unidades.
+Para una unidad de aumento en LE, la percepción de felicidad aumenta en 2.3723 unidades.
+Por último, para una unidad de aumento en Freedom, la percepción de felicidad aumenta en 1.9453 unidades.
+
+En conclusión, el modelo obtenido muestra una buena calidad de ajuste y todas las variables explicativas tienen un efecto significativo en la percepción de la felicidad.
+
+### b) GpC y Generosity
+
+En este apartado se probará a añadir al modelo anterior las variables GpC y Generosity.
+
+```{r}
+# Ajustar el modelo lineal 
+modelo2 <- lm(HS ~ Family + LE + Freedom + GpC + Generosity, data = data)
+
+# Obtener los resultados
+summary(modelo2)
+```
+
+Sería adecuado añadir la variable **GpC** al modelo, ya que su coeficiente es significativo con un valor de p significativamente inferior a 0.05 y aporta información adicional al modelo en términos de su capacidad predictiva.
+Sin embargo, la variable **Generosity** no parece aportar información significativa al modelo, ya que su coeficiente no es significativo con un valor de p de 0.4 y su inclusión en el modelo no mejoraría significativamente la capacidad predictiva del modelo.
+
+## 1.2. Modelo de regresión lineal (variables cuantitativas y cualitativas)
+
+### a) Region
+
+A continuación, añadiremos al modelo escogido en el apartado anterior (Family + LE + Freedom + GpC), la variable cualitativa Region.
+Vamos a tomar como categoría de referencia '*Sub-Saharan Africa'*.
+
+Para ello, en primer lugar debemos transformar la variable Region en variables ficticias (dummies) que tomen el valor 0 o 1 en función de la categoría a la que pertenece cada observación, utilizarando como referencia la categoría "Sub-Saharan Africa", lo que significa que todas las variables ficticias tendrán valor 0 para las observaciones pertenecientes a esta región.
+Habrá además que eliminar la primera (Intercept) columna a la hora de crear las variables ficticias para evitar colinealidad.
+
+```{r}
+# Establecer "Sub-Saharan Africa" como categoría de referencia
+data$Region <- relevel(data$Region, ref = "Sub-Saharan Africa")
+
+# Crear variables ficticias para cada categoría de Region
+RegionDummies <- model.matrix(~Region, data = data)[,-1] # Se elimina la primera columna para evitar la colinealidad
+
+# Unir las variables ficticias con el conjunto de datos original
+data_with_dummies <- cbind(data, RegionDummies)
+
+# Ajustar el modelo con Family, LE, Freedom, GpC y las variables ficticias de Region
+ModelF <- lm(HS ~ Family + LE + Freedom + GpC + RegionDummies, data = data_with_dummies)
+
+# Mostrar los resultados del modelo
+summary(ModelF)
+```
+
+El modelo muestra los resultados de un análisis de regresión lineal múltiple donde se ha incluido la variable "Region" como variables ficticias (dummies) junto con las variables "Family", "LE", "Freedom" y "GpC".
+
+Los coeficientes estimados representan la relación entre cada variable explicativa y la variable dependiente "HS" (percepción de la felicidad), manteniendo constantes las demás variables.
+
+Los valores p asociados a cada coeficiente indican la significancia estadística de la relación entre la variable explicativa y la variable dependiente.
+Cuanto más pequeño es el valor p, más significativa es la relación.
+
+En este caso, el intercepto tiene un valor estimado de 2.4402 y es altamente significativo (p \< 2e-16).
+Esto representa el valor esperado de "HS" cuando todas las variables explicativas son cero.
+
+Las variables "Family", "LE", "Freedom" y "GpC" también son significativas (p \< 0.05), lo que indica que tienen un impacto estadísticamente significativo en la percepción de la felicidad.
+
+Las variables ficticias de "Region" muestran que algunas regiones tienen coeficientes significativos, lo que indica que están asociadas con diferencias en la percepción de la felicidad en comparación con la categoría de referencia ("Sub-Saharan Africa").
+Por ejemplo, las regiones **"Australia and New Zealand", "Latin America and Caribbean", "North America" y "Western_Europe"** tienen coeficientes significativos (p \< 0.05), lo que sugiere que estas regiones están asociadas con **niveles de felicidad diferentes** en comparación con "Sub-Saharan Africa".
+
+El coeficiente de determinación múltiple ($R^2$) del modelo es 0.8072, lo que indica que aproximadamente el 80.72% de la variabilidad en la percepción de la felicidad puede ser explicada por las variables incluidas en el modelo.
+
+El F-estadístico muestra que el modelo en su conjunto es altamente significativo (p \< 2.2e-16), lo que indica que al menos una de las variables explicativas tiene un efecto significativo en la variable dependiente.
+
+En resumen, el modelo muestra que las variables "Family", "LE", "Freedom" y "GpC" son significativas y tienen un impacto positivo en la percepción de la felicidad.
+Además, algunas regiones también están asociadas con diferencias significativas en la felicidad en comparación con la región de referencia "Sub-Saharan Africa".
+
+### b) Felicidad por Region
+
+Vamos a calcular los valores medios de la puntuación de felicidad por Region.
+Para ello, vamos a utilizar la función *aggregate()*, que nos permite realizar operaciones de agregación en un dataframe y calcular estadísticas resumidas, como la media, la suma, el máximo, el mínimo, etc., para grupos específicos definidos por una o varias variables.
+
+```{r}
+aggregate(HS ~ Region, data, mean)
+```
+
+En los resultados del modelo, se encontraron coeficientes significativos para algunas regiones, lo que sugería que esas regiones tenían niveles de felicidad diferentes en comparación con la región de referencia.
+
+Al calcular los valores medios de la puntuación de felicidad por región, observamos que las regiones con valores medios más altos de felicidad son "Australia and New Zealand" y "North America", mientras que la región con el valor medio más bajo es "Sub-Saharan Africa".
+Estos resultados son consistentes con los coeficientes estimados en el modelo, donde se encontraron diferencias significativas en la felicidad entre esas regiones y la región de referencia.
+
+En resumen, los valores medios de la puntuación de felicidad por región respaldan los resultados obtenidos en el modelo y proporcionan una visión más detallada de las diferencias en la felicidad entre las distintas regiones.
+
+## 1.3. Diagnosis del modelo
+
+Para la diagnosis se escoge el ModelF construído y se representarán dos gráficos: uno con los valores ajustados frente a los residuos (que nos permitirá ver si la varianza es constante) y el gráfico cuantil-cuantil que compara los residuos del modelo con los valores de una variable que se distribuye normalmente (QQ plot).
+
+```{r}
+# Obtener los residuos del modelo ModelF
+residuos <- residuals(ModelF)
+
+# Gráfico de valores ajustados frente a residuos
+plot(fitted(ModelF), residuos, xlab = "Valores Ajustados", ylab = "Residuos",
+     main = "Valores Ajustados vs. Residuos")
+abline(h=mean(residuos),lty=2)
+```
+
+Para verificar la homocedasticidad en el gráfico de valores ajustados frente a residuos, debemos observar si los puntos se dispersan de manera uniforme alrededor de una línea horizontal sin un patrón discernible.
+Aquí hay algunas características a considerar:
+
+1.  **Dispersión constante**: Los puntos deben estar dispersos de manera uniforme a lo largo del rango de valores ajustados, sin que haya un patrón de aumento o disminución en la dispersión a medida que los valores ajustados cambian. Esto indica que la varianza de los residuos es constante.
+2.  **Línea horizontal**: Idealmente, los puntos deberían estar distribuidos alrededor de una línea horizontal en el gráfico. Esto indica que la media de los residuos es cercana a cero en cada nivel de los valores ajustados.
+3.  **Ausencia de patrones o estructuras**: No debe haber un patrón sistemático en la dispersión de los puntos, como una forma curva, forma de embudo o forma de abanico. Estos patrones podrían indicar una violación de la suposición de homocedasticidad.
+
+Dado que estas tres condiciones se cumplen, podemos afirmar que la varianza es constante
+
+```{r}
+# Gráfico cuantil-cuantil (QQ plot) de los residuos
+qqnorm(residuos, main = "QQ Plot de los Residuos")
+qqline(residuos)
+```
+
+El gráfico cuantil-cuantil (QQ plot) se utiliza para comparar la distribución de los residuos del modelo con una distribución normal teórica.
+En el gráfico, los valores teóricos se representan en el eje x (theoretical quantiles) y los valores observados se representan en el eje y (sample quantiles).
+
+Cuando los puntos en el gráfico están cerca de la línea diagonal, significa que los valores observados se ajustan bien a la distribución normal teórica.
+En otras palabras, los puntos siguen aproximadamente una línea recta, lo que sugiere que los residuos siguen una distribución normal.
+
+## 1.4. Predicción del modelo
+
+En este apartado, calcularemos el valor de percepción de la felicidad, HS, de un país hipotético de la zona de Latin America and Caribbean, que hubiera obtenido las puntuaciones siguientes: Freedom= 0.5, Family = 1.2 y LE=0.90.
+
+```{r}
+# Valores de las variables explicativas del país hipotético
+Freedom_hipo <- 0.5
+Family_hipo <- 1.2
+LE_hipo <- 0.90
+
+# Coeficientes del modelo
+coeficientes <- coef(ModelF)
+coeficientes
+
+# Valor de HS para el país hipotético
+HS_hipo <- coeficientes["(Intercept)"] +
+            coeficientes["Freedom"] * Freedom_hipo +
+            coeficientes["Family"] * Family_hipo +
+            coeficientes["LE"] * LE_hipo +
+            coeficientes["RegionDummiesRegionLatin America and Caribbean"]
+
+HS_hipo
+```
+
+La función *coef()* extrae los coeficientes estimados de un modelo ajustado.
+Toma como argumento el objeto del modelo y devuelve un vector que contiene los coeficientes estimados para cada una de las variables explicativas del modelo, así como el coeficiente de intersección (también conocido como el intercepto).
+
+Posteriormente, se suman estos términos y se obtiene el valor estimado de HS para el país hipotético (6.01).
+
+# 2. Regresión logística
+
+A lo largo de este ejercicio estudiaremos cuáles son los factores que más influyen en la percepción de los habitantes de cada país sobre la felicidad.
+
+Para ello, primero se creará una nueva variable dicotómica llamada HS_re.
+Esta nueva variable está relacionada con los valores de la variable HS.
+Se codificará de la siguiente forma: "unhappy or neutral", con valores de HS de 0 a 6, y "happy" con valores de HS mayores de 6.
+Posteriormente se le dará el valor 0 a "unhappy" y el valor 1 a "happy".
+
+```{r}
+# Crear la variable dicotómica HS_re
+# 1 si HS>6, 0 en caso contrario
+data$HS_re <- ifelse(data$HS > 6, 1, 0)
+```
+
+Para poder estimar de forma más objetiva la precisión del modelo, separaremos el conjunto de datos en dos partes: el conjunto de entrenamiento (training) y el conjunto de prueba (testing).
+Ajustaremos el modelo de regresión logística con el conjunto de entrenamiento, y evaluaremos la precisión con el conjunto de prueba.
+
+## 2.1. Generación de los conjuntos de entrenamiento y de test
+
+Generamos los conjuntos de datos asignando un 80% de los datos a entrenamiento de forma aleatoria y el 20% restante a test.
+Para ello, utilizamos la función *createDataPartition()* del paquete caret, que permite generar índices aleatorios para la partición de los datos.
+El argumento *list = FALSE* indica que queremos obtener los índices como un vector numérico en lugar de una lista.
+
+```{r}
+# Establecer una semilla para reproducibilidad
+set.seed(123)
+
+# Crear los índices para la partición de los datos
+indices <- createDataPartition(data$HS_re, p = 0.8, list = FALSE)
+
+# Crear los conjuntos de entrenamiento y prueba
+training <- data[indices, ]
+testing <- data[-indices, ]
+
+# Mostrar resultados
+print(paste("Datos totales: ", nrow(data)))
+print(paste("Datos training: ", nrow(training)))
+print(paste("Datos testing: ", nrow(testing)))
+```
+
+## 2.2 Estimación del modelo con el conjunto de entrenamiento e interpretación
+
+### a) Variable dependiente HS_re y variables explicativas LE, Freedom y Generosity
+
+Vamos a estimar un modelo de regresión logística con las variables dependiente HS_re y las variables explicativas LE, Freedom y Generosity, puedes utilizar la función *glm()*, que se utiliza para ajustar modelos de regresión lineal generalizada.
+Estos modelos son más flexibles y pueden manejar diferentes tipos de distribuciones para la variable dependiente, como binomial (en el caso de la regresión logística) o Poisson (en el caso de la regresión de Poisson), entre otros.
+
+La principal diferencia entre lm() y glm() radica en la naturaleza de los modelos que ajustan y las distribuciones que asumen para los errores.
+Mientras que lm() se utiliza para modelos de regresión lineal con errores normales, glm() se utiliza para modelos de regresión lineal generalizada con diferentes distribuciones de errores.
+
+```{r}
+# Ajustar el modelo de regresión logística
+model <- glm(HS_re ~ LE + Freedom + Generosity, data = training, family = binomial)
+
+# Mostrar el resumen del modelo
+summary(model)
+```
+
+En base a los resultados del modelo de regresión logística, podemos observar lo siguiente:
+
+-   La variable LE tiene un coeficiente estimado positivo de 8.92271 y un valor p muy bajo (\< 0.001), lo que indica que tiene un efecto significativo en la variable dependiente HS_re.
+    Por lo tanto, parece ser una variable relevante para incluir en el modelo.
+
+-   La variable Freedom también tiene un coeficiente estimado positivo de 9.99891 y un valor p muy bajo (\< 0.001), lo que sugiere que también tiene un efecto significativo en HS_re.
+    Por lo tanto, esta variable también parece ser relevante para incluir en el modelo.
+
+-   La variable Generosity tiene un coeficiente estimado cercano a cero (-0.04125) y un valor p elevado (0.986152), lo que indica que no tiene un efecto significativo en la variable dependiente HS_re.
+    Por lo tanto, en base a estos resultados, podríamos prescindir de esta variable en el modelo.
+
+En resumen, las variables que escogería para el modelo serían **LE** y **Freedom**, ya que parecen ser las más influyentes en la percepción de la felicidad según el modelo de regresión logística.
+
+### b) Añadir GC
+
+Se añade al modelo escogido anterior (LE y Freedom) la variable GC.
+
+```{r}
+# Ajustar el modelo de regresión logística
+model2 <- glm(HS_re ~ LE + Freedom + GC, data = training, family = binomial)
+
+# Mostrar el resumen del modelo
+summary(model2)
+```
+
+Para evaluar la presencia de colinealidad entre la variable GC y la variable Freedom en el modelo de regresión logística, podemos examinar los coeficientes estimados y sus valores p.
+
+En el modelo actual, el coeficiente estimado para la variable Freedom es 8.209, con un valor p de 0.00289.
+Esto indica que Freedom tiene un efecto significativo en la variable dependiente HS_re.
+
+Por otro lado, la variable GC tiene un coeficiente estimado de 4.858 y un valor p de 0.10709, lo que sugiere que no es estadísticamente significativa en este modelo.
+
+Dado que el coeficiente de GC no es significativo y su valor p es relativamente alto, podemos concluir que **no hay evidencia suficiente para afirmar que haya colinealidad entre GC y Freedom** en el modelo.
+
+Sin embargo, es importante tener en cuenta que la colinealidad no se puede determinar únicamente por los coeficientes y valores p, sino que también se deben considerar otros diagnósticos y técnicas específicas para evaluarla de manera más precisa, por lo que vamos a generar una matriz de correlación entre las variables independientes del modelo.
+Si existe una correlación fuerte (positiva o negativa) entre dos o más variables, puede indicar la presencia de colinealidad.
+
+```{r}
+# Seleccionar las variables independientes del modelo
+variables <- c("Freedom", "GC", "LE")
+
+# Crear la matriz de correlación
+cor_matrix <- cor(training[, variables])
+
+# Mostrar la matriz de correlación
+cor_matrix
+```
+
+La correlación entre Freedom y GC es de 0.477, lo cual indica una correlación moderada positiva entre estas dos variables.
+Así, vemos que la variable GC es prescindible y, por tanto, la eliminamos por simplicidad del modelo.
+
+Además, al comparar los modelos sin la variable "GC" y con la variable "GC", observamos que los coeficientes y la significancia estadística de las variables "LE" y "Freedom" se mantienen relativamente estables en ambos modelos.
+
+En el modelo sin la variable "GC":
+
+-   El coeficiente para "LE" es de 8.92271 con un valor p significativo.
+
+-   El coeficiente para "Freedom" es de 9.99891 con un valor p significativo.
+
+En el modelo con la variable "GC":
+
+-   El coeficiente para "LE" es de 9.126 con un valor p significativo.
+
+-   El coeficiente para "Freedom" es de 8.209 con un valor p significativo.
+
+No se observa un cambio sustancial en los coeficientes y en la significancia de las otras variables al eliminarla del modelo.
+
+En base a estos resultados, se puede concluir que la variable "GC" no parece ser una variable confusora importante en el modelo, y se puede prescindir de ella por simplicidad y para evitar problemas de colinealidad con la variable "Freedom".
+
+### c) Añadir Region_re
+
+Se añade al modelo escogido en el apartado b), la variable Region_re.
+Esta nueva variable se construye a partir de Region.
+Las nuevas categorías serán:
+
+-   Africa: se agruparán todas las regiones que contengan la palabra Africa.
+
+-   Asia: se agruparán todas las regiones que contengan la palabra Asia.
+
+-   A_A\_NZ: Se agruparán las regiones de Australia and New Zealand y North America.
+
+-   Western Europe, Central and Eastern Europe y Latin America and Caribbean, se mantienen como están.
+
+En el modelo de regresión se tomará como categoría de referencia "Central and Eastern Europe".
+
+```{r}
+# Reemplazar las categorías existentes con las nuevas categorías definidas como factor
+training$Region_re <- factor(ifelse(grepl("Africa", training$Region), "Africa",
+                   ifelse(grepl("Asia", training$Region), "Asia",
+                   ifelse(grepl("Australia and New Zealand", training$Region), "A_A_NZ",
+                   ifelse(grepl("North America", training$Region), "A_A_NZ",
+                   levels(training$Region)[training$Region])))))
+
+# Establecer la categoría de referencia utilizando la función 
+training$Region_re <- relevel(training$Region_re, ref = "Central and Eastern Europe")
+
+# Visualizamos las 10 primeras filas
+head(training[,c("Region", "Region_re")],10)
+
+# Ajustar el modelo de regresión logística
+modlgF <- glm(HS_re ~ LE + Freedom + Region_re, data = training, family = binomial)
+summary(modlgF)
+```
+
+La salida del modelo final indica lo siguiente:
+
+-   Coeficientes:
+
+    -   El coeficiente para "LE" es de 12.864 con un valor p significativo, lo que indica que un aumento en el índice de esperanza de vida está asociado con un mayor log-odds de felicidad en comparación con la categoría de referencia "Central and Eastern Europe".
+
+    -   El coeficiente para "Freedom" es de 11.232 con un valor p significativo, lo que indica que un aumento en el índice de libertad está asociado con un mayor log-odds de felicidad en comparación con la categoría de referencia "Central and Eastern Europe".
+
+    -   Los coeficientes para las variables de región "Region_re" indican el cambio en los log-odds de felicidad para cada región en comparación con la categoría de referencia "Central and Eastern Europe".
+        Sin embargo, algunos de los coeficientes para las regiones no son significativos.
+
+-   Significancia estadística:
+
+    -   El valor p para el intercepto y las variables "LE" y "Freedom" es muy pequeño (menor que 0.05), lo que indica que estas variables son significativas y tienen un impacto en la variable dependiente "HS_re".
+
+    -   Algunas variables de región, como "Region_reAfrica", "Region_reLatin America and Caribbean", y "Region_reAsia", tienen valores p significativos, lo que indica que hay diferencias estadísticamente significativas en la percepción de felicidad entre estas regiones y la región de referencia "Central and Eastern Europe".
+
+-   AIC:
+
+    -   El AIC (Akaike Information Criterion) del modelo final es 77.96. El AIC se utiliza para comparar diferentes modelos, y un valor menor indica un mejor ajuste del modelo. En comparación con el modelo anterior, el AIC ha disminuido, lo que sugiere una mejora en el ajuste del modelo.
+
+En general, el modelo final incluye las variables "LE" y "Freedom" que se seleccionaron anteriormente, y también incorpora la variable "Region_re".
+El modelo indica que tanto la esperanza de vida como la libertad tienen un impacto significativo en la percepción de felicidad, y algunas regiones también muestran diferencias significativas en comparación con la región de referencia.
+En términos de mejora del modelo, se ha agregado información adicional sobre la influencia de la región en la percepción de felicidad, lo que puede proporcionar una mejor comprensión de los factores que influyen en esta variable.
+
+Basándonos en los coeficientes estimados y su significancia estadística en el modelo final, las variables significativas son "**LE**", "**Freedom**", "**Region_reAfrica**" y "**Region_reLatin America and Caribbean**", y estas tienen un odds ratio (OR, columna Estimate) mayor a 1.
+Esto indica que el suceso de felicidad es más probable en presencia de dichas covariables y, por tanto, estas son **factores de riesgo**.
+
+Por su parte, las variables "Region_reA_A\_NZ", "Region_reAsia" y "Region_reWestern Europe", al no se variables significativas, no deben ser consideradas factores de riesgo ni de protección.
+
+## 2.3. Cálculo de las OR (Odds-Ratio)
+
+-   Para la variable "LE": Por cada unidad de aumento en "LE", se espera un aumento de aproximadamente 12.864 veces en las probabilidades de tener un alto nivel de felicidad.
+
+-   Para la variable "Freedom": Por cada unidad de aumento en "Freedom", se espera un aumento de aproximadamente 11.232 veces en las probabilidades de tener un alto nivel de felicidad.
+
+-   Para la variable "Region_reAfrica": Por estar en "Region_reAfrica" en comparación con la categoría de referencia ("Central and Eastern Europe"), se espera un aumento de aproximadamente 3.926 veces en las probabilidades de tener un alto nivel de felicidad.
+
+-   Para la variable "Region_reLatin America and Caribbean": Por estar en "Region_reLatin America and Caribbean" en comparación con la categoría de referencia ("Central and Eastern Europe"), se espera un aumento de aproximadamente 4.117 veces en las probabilidades de tener un alto nivel de felicidad.
+
+## 2.4. Matriz de confusión
+
+A continuación, analizamos la precisión de ModlgF, comparando la predicción del modelo contra el conjunto de prueba (testing).
+Se asumirá que la predicción del modelo es 1, happy, si la probabilidad del modelo de regresión logística es superior o igual a 0.8 y 0 en caso contrario.
+
+```{r}
+# Añadir Region_re a testing
+testing$Region_re <- factor(ifelse(grepl("Africa", testing$Region), "Africa",
+                   ifelse(grepl("Asia", testing$Region), "Asia",
+                   ifelse(grepl("Australia and New Zealand", testing$Region), "A_A_NZ",
+                   ifelse(grepl("North America", testing$Region), "A_A_NZ",
+                   levels(testing$Region)[testing$Region])))))
+
+# Predicción del modelo
+prediccion <- predict(modlgF, testing)
+
+# HS_pred=1 si prediccion >= 0.8, HS_pred=0 en caso contrario
+testing$HS_pred <- ifelse(prediccion >= 0.8, 1, 0)
+
+# Visualizamos las 10 primeras filas
+head(testing[,c("Region", "Region_re", "HS_pred", "HS_re", "HS")],10)
+```
+
+Analizamos la matriz de confusión y las medidas de sensibilidad y especificidad.
+
+```{r}
+table(testing$HS_pred, testing$HS_re)
+```
+
+La matriz de confusión se compone de cuatro elementos: verdaderos positivos (TP), verdaderos negativos (TN), falsos positivos (FP) y falsos negativos (FN).
+
+En este caso, podemos interpretar los valores de la siguiente manera:
+
+-   TP: Hay 6 casos en los que el valor real (HR) y el valor predicho (HR_pred) son 1 (happy).
+
+-   TN: Hay 19 casos en los que el valor real y el valor predicho son 0 (not happy).
+
+-   FP: Hay 3 casos en los que el valor real es 0 (not happy) pero el valor predicho es 1 (happy).
+
+-   FN: Hay 3 casos en los que el valor real es 1 (happy) pero el valor predicho es 0 (not happy).
+
+Con estos valores, podemos calcular las medidas de sensibilidad y especificidad:
+
+```{r}
+TP <- sum(testing$HS_pred == 1 & testing$HS_re == 1)
+TN <- sum(testing$HS_pred == 0 & testing$HS_re == 0)
+FP <- sum(testing$HS_pred == 1 & testing$HS_re == 0)
+FN <- sum(testing$HS_pred == 0 & testing$HS_re == 1)
+
+sensibilidad <- TP / (TP+FN)
+especificidad <- TN / (TN+FP)
+sensibilidad
+especificidad
+```
+
+-   Sensibilidad (también conocida como tasa de verdaderos positivos o recall): Se calcula como TP / (TP + FN).
+    En este caso, sería 6 / (6 + 3) = 0.6667.
+    Esta nos indica la proporción de casos positivos que fueron correctamente identificados.
+
+-   Especificidad (también conocida como tasa de verdaderos negativos): Se calcula como TN / (TN + FP).
+    En este caso, sería 19 / (19 + 3) = 0.8636.
+    Esta nos indica la proporción de casos negativos que fueron correctamente identificados.
+
+En resumen, en base a la matriz de confusión y las medidas de sensibilidad y especificidad, el modelo muestra una buena capacidad para identificar correctamente los casos negativos (not happy) pero tiene una sensibilidad no muy alta para identificar los casos positivos (happy) y es mejor detectando casos negativos de felicidad que casos positivos.
+Esto se puede deber a que, en el conjunto de datos de entrenamiento haya una mayor abundancia de datos negativos que positivos y, por tanto, el modelo se ajuste y tienda más a predecir datos negativos, o bien al umbral de 0.8 seleccionado a la hora de determinar la presencia o ausencia felicidad.
+
+## 2.5. Predicción
+
+Vamos a identificar aquéllos países cuya probabilidad de estar entre los países más felices sea superior al 80%, según el modelo de predicciones contra el conjunto de prueba (testing), calculado anteriormente.
+
+```{r}
+# Filtrar los países cuya probabilidad de estar entre los países más felices es superior al 80%
+high_prob_countries <- as.character(testing$Country)[prediccion >= 0.8]
+
+# Imprimir los países identificados
+print(high_prob_countries)
+```
+
+```{r}
+# Top 9 real
+print(head(testing, 9)["Country"])
+```
+
+```{r}
+aciertos = 0
+for (i in 1:length(high_prob_countries)) {
+  if(high_prob_countries[i] %in% head(testing, 9)[,"Country"]){
+    aciertos <- aciertos+1
+  }
+}
+aciertos
+```
+
+Vemos que de los 9 paises detectados entre los más felices, 6 de ellos están en el top 9 real de paises más felices, lo cual es un resultado bastante bueno.
+
+## 2.6. Bondad del ajuste
+
+### a) Bondad del ajuste mediante la devianza
+
+Vamos a evaluar la bondad del ajuste, mediante la devianza.
+Para que ModlgF sea bueno la devianza residual debe ser menor que la devianza nula.
+
+```{r}
+summary(modlgF)
+```
+
+Vemos que, efectivamente, la devianza residual (61.96) es claramente menor menor que la devianza nula (154.28).
+En ese caso el modelo predice la variable dependiente con mayor precisión.
+
+### b) Eficacia del modelo según Chi-cuadrado
+
+A continuación evaluaremos la eficacia del modelo según el test Chi-cuadrado.
+En este caso el valor del estadístico Chi-cuadrado observado es igual a la diferencia de devianzas (nula-residual).
+
+```{r}
+# Diferencia de devianzas
+chi2 <- modlgF$null.deviance - modlgF$deviance
+chi2
+```
+
+Vamos a calcular la probabilidad asociada al estadístico del contraste utilizando la función pchisq, que calcula la probabilidad acumulativa asociada a un valor dado del estadístico de contraste chi-cuadrado.
+Toma dos argumentos: *chi2*, que es el valor del estadístico chi-cuadrado, y *df*, que es el número de grados de libertad, obtenido como la diferencia de grados de libertad entre la devianza nula y la devianza residual.
+
+```{r}
+df <- modlgF$df.null - modlgF$df.residual
+df
+1-pchisq(chi2, df)
+```
+
+1 - pchisq() se utiliza para calcular la probabilidad de que el estadístico chi-cuadrado sea mayor o igual a un valor específico en un test de hipótesis.
+Esta probabilidad se utiliza para evaluar la significancia del resultado del test.
+
+En este caso se obtiene un valor 0.
+Esto significa que la probabilidad de que el estadístico de contraste chi-cuadrado sea mayor o igual al valor dado es extremadamente baja.
+En otras palabras, la probabilidad de obtener un valor igual o mayor al observado en el estadístico de contraste es prácticamente nula, lo cual, indica una fuerte evidencia en contra de la hipótesis nula de que los parámetros de los componentes que forman parte del modelo modlgF, pero no del modelo nulo, son 0.
+
+## 2.7. Curva ROC
+
+Dibujamos la curva ROC y calculamos el área debajo de la curva con ModlgF.
+
+```{r}
+# Calcular la curva ROC
+r <- roc(testing$HS_re, testing$HS_pred)
+
+# Dibujar la curva ROC
+plot(r, main = "Curva ROC")
+
+# Calcular area
+auc <- auc(r)
+auc
+
+# Obtener punto de inflexion
+r_points <- coords(r, "all")
+r_points
+```
+
+La curva ROC (Receiver Operating Characteristic) es una representación gráfica del rendimiento de un modelo de clasificación binaria.
+Se traza utilizando la tasa de verdaderos positivos (sensibilidad) en el eje Y y la tasa de falsos positivos (1 - especificidad) en el eje X.
+
+En este caso, la curva ROC está formada por dos segmentos de línea recta.
+El primer segmento va desde el punto (0,1) hasta el punto (0.86,0.67), y el segundo segmento va desde el punto (0.86,0.67) hasta el punto (1,0).
+Esta forma de curva puede indicar que el modelo tiene un rendimiento aceptable, pero no óptimo.
+
+Un mejor rendimiento del modelo se refleja en una curva que se acerca más al punto (0,1) en el eje Y y luego se acerca más al punto (1,0) en el eje X.
+La forma de la curva y la distancia de la curva al azar (línea diagonal) indican la capacidad del modelo para distinguir entre las clases positiva y negativa.
+
+El área bajo la curva (AUC) es una medida numérica que resume la capacidad de discriminación del modelo.
+En tu caso, el AUC es 0.7652.
+El valor del AUC varía entre 0 y 1, donde un valor de 1 indica un modelo perfecto que puede clasificar correctamente todas las instancias, y un valor de 0.5 indica un modelo que es equivalente a una clasificación aleatoria.
+
+Un AUC de 0.7652 indica que el modelo tiene una capacidad moderada para distinguir entre las clases positiva y negativa.
+Cuanto más cercano esté el AUC a 1, mejor será la capacidad de clasificación del modelo.
+Sin embargo, la interpretación exacta del AUC puede depender del contexto específico del problema y de los umbrales de clasificación utilizados.
+
+# 3. Informe Ejecutivo
+
+## 3.1. Presentación de los principales resultados del estudio en una tabla
+
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| Apartado | Pregunta                                                                        | Resultado                                                                                                | Conclusión                                                                                                                                                                                                                                                        |
++==========+=================================================================================+==========================================================================================================+===================================================================================================================================================================================================================================================================+
+| 1.1.a)   | Family, LE y Freedom variables significativas para HS?                          | p-Family: 3.25e-10                                                                                       | Las tres variables explicativas son significativas.                                                                                                                                                                                                               |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-LE: 2e-16                                                                                              |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Freedom: 1.06e-7                                                                                       |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1.1.b)   | GpC y Generosity variables significativas?                                      | p-GpC: 2.85e-4                                                                                           | GpC es significativa pero Generosity no.                                                                                                                                                                                                                          |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Generosity: 0.404                                                                                      |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1.2.a)   | Region variable significativa con categoría de referencia 'Sub-Saharan Africa'? | p-Australia_and_New_Zealand: 0.027431                                                                    | Las regiones "Australia and New Zealand", "Latin America and Caribbean", "North America" y "Western_Europe" están asociadas con niveles de felicidad diferentes en comparación con "Sub-Saharan Africa".                                                          |
+|          |                                                                                 | p-Central_and_Eastern_Europe: 0.318346                                                                   |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Eastern_Asia: 0.807012                                                                                 |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Latin_America_and_Caribbean: 0.000164                                                                  |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Middle_East_and_Northern_Africa: 0.140501                                                              |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-North_America: 0.018119                                                                                |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Southeastern_Asia: 0.642019                                                                            |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Southern_Asia: 0.506672                                                                                |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Western_Europe: 0.026944                                                                               |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1.2.b)   | Felicidad media por región?                                                     | Sub-Saharan Africa: 4.13                                                                                 | Las regiones con valores medios más altos de felicidad son "Australia and New Zealand" y "North America", mientras que la región con el valor medio más bajo es "Sub-Saharan Africa".                                                                             |
+|          |                                                                                 | Australia and New Zealand: 7.32                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Central and Eastern Europe: 5.37                                                                         |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Eastern Asia: 5.62                                                                                       |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Latin America and Caribbean: 6.10                                                                        |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Middle East and Northern Africa: 5.39                                                                    |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | North America: 7.25                                                                                      |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Southeastern Asia: 5.34                                                                                  |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Southern Asia: 4.56                                                                                      |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Western Europe: 6.69                                                                                     |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1.3.     | Diagnosis del modelo                                                            | Dispersión constante                                                                                     | La varianza es constante y los residuos siguen una distribución normal.                                                                                                                                                                                           |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Línea horizontal                                                                                         |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Ausencia de patrones o estructuras                                                                       |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Los puntos en el gráfico están cerca de la línea diagonal                                                |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 1.4.     | HS para Freedom= 0.5, Family = 1.2 y LE=0.90?                                   | HS: 6.010453                                                                                             | El valor estimado de HS para el pais hipotético es de 6.01                                                                                                                                                                                                        |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.2.a)   | LE, Freedom y Generosity variables significativas para HS_re?                   | p-LE: 1.2e-5                                                                                             | Se seleccionan las variables LE y Freedom, pero Generosity no.                                                                                                                                                                                                    |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Freedom: 3.21e-4                                                                                       |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | p-Generosity: 0.986                                                                                      |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.2.b)   | Colinealidad en tre GC y Freedom? GC variable confusora?                        | p-GC: 0.107                                                                                              | No hay evidencia suficiente para afirmar que haya colinealidad entre GC y Freedom en el modelo.                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Correlacion moderada en matriz de correlación                                                            | GC no es una variable confusora                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Escasa diferencia entre los modelos con y sin GC                                                         |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.2.c)   | Mejora el modelo con la variable Region_re?                                     | LE -\> OR: 12.864, p: 0.000167                                                                           | AIC ha disminuido, lo que sugiere una mejora en el ajuste del modelo.                                                                                                                                                                                             |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          | Factores de riesgo y de protección?                                             | Freedom -\> OR: 11.232, p: 0.001841                                                                      | Las variables "LE", "Freedom", "Region_reAfrica" y "Region_reLatin America and Caribbean" son factores de riesgo y no hay factores de protección.                                                                                                                 |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | A_A\_NZ -\> OR: 17.305, p: 0.992723                                                                      |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Africa -\> OR: 3.926, p: 0.009504                                                                        |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Asia -\> OR: 1.245, p: 0.418365                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Latin America and Caribbean -\> OR: 4.117, p: 0.002514                                                   |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Western Europe -\> OR: 1.441, p: 0.301350                                                                |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | AIC: 77.96                                                                                               |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.3.     | OR?                                                                             | LE-OR: 12.864                                                                                            | Por cada unidad de aumento en "LE", se espera un aumento de aproximadamente 12.864 veces en las probabilidades de tener un alto nivel de felicidad.                                                                                                               |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Freedom-OR: 11.232                                                                                       | Por cada unidad de aumento en "Freedom", se espera un aumento de aproximadamente 11.232 veces en las probabilidades de tener un alto nivel de felicidad.                                                                                                          |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Africa-OR: 3.926                                                                                         | Por estar en Africa en comparación con la categoría de referencia ("Central and Eastern Europe"), se espera un aumento de aproximadamente 3.926 veces en las probabilidades de tener un alto nivel de felicidad.                                                  |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | Latin America and Caribbean-OR: 4.117                                                                    | Por estar en Latin America and Caribbean en comparación con la categoría de referencia ("Central and Eastern Europe"), se espera un aumento de aproximadamente 4.117 veces en las probabilidades de tener un alto nivel de felicidad.                             |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.4.     | Precisión del modelo con umbral=0.8?                                            | TP: 6                                                                                                    | El modelo muestra una buena capacidad para identificar correctamente los casos negativos (not happy) pero tiene una sensibilidad no muy alta para identificar los casos positivos (happy) y es mejor detectando casos negativos de felicidad que casos positivos. |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | TN: 19                                                                                                   |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | FP: 3                                                                                                    |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | FN: 3                                                                                                    |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | sensibilidad: 0.6667                                                                                     |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | especificidad: 0.8636                                                                                    |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.5.     | Paises más felices con probabilidad superior al 80%?                            | Switzerland, Iceland, Sweden, Belgium, Luxembourg, United Arab Emirates, Nicaragua, Mauritius, Hong Kong | De los 9 paises detectados entre los más felices, 6 de ellos están en el top 9 real de paises más felices, lo cual es un resultado bastante bueno.                                                                                                                |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.6.a)   | Bondad del ajuste mediante devianza?                                            | devianza residual: 61.96                                                                                 | El modelo predice la variable dependiente con mayor precisión.                                                                                                                                                                                                    |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | devianza nula 154.28                                                                                     |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.6.b)   | Eficacia segun Chi-cuadrado?                                                    | chi2: 92.31                                                                                              | La probabilidad de que el estadístico de contraste chi-cuadrado sea mayor o igual al valor dado es extremadamente baja                                                                                                                                            |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | df: 7                                                                                                    |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 | 1-pchisq: 0                                                                                              |                                                                                                                                                                                                                                                                   |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+| 2.7.     | Curva ROC y AUC?                                                                | AUC: 0.7652                                                                                              | La curva ROC está formada por dos segmentos de línea recta, lo cual puede indicar que el modelo tiene un rendimiento aceptable, pero no óptimo.                                                                                                                   |
+|          |                                                                                 |                                                                                                          |                                                                                                                                                                                                                                                                   |
+|          |                                                                                 |                                                                                                          | Un AUC de 0.7652 indica que el modelo tiene una capacidad moderada para distinguir entre las clases positiva y negativa.                                                                                                                                          |
++----------+---------------------------------------------------------------------------------+----------------------------------------------------------------------------------------------------------+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+
+
+## 3.2. Resumen ejecutivo. Conclusiones del análisis
+
+Con base en el estudio realizado, se pueden extraer las siguientes conclusiones para una audiencia no técnica:
+
+1.  Variables significativas para la felicidad:
+
+    -   Las variables Familia, Esperanza de vida y Libertad son factores significativos que influyen positivamente en los niveles de felicidad.
+        Esto significa que tener un buen entorno familiar, una mayor esperanza de vida y disfrutar de libertad personal contribuyen a tener niveles más altos de felicidad.
+
+2.  Variables no significativas para la felicidad:
+
+    -   Por otro lado, las variables GpC y Generosidad no mostraron una relación significativa con los niveles de felicidad.
+        Esto implica que el nivel de riqueza económica o la generosidad de una sociedad no son factores determinantes para explicar la felicidad de sus habitantes.
+
+3.  Influencia de la región en la felicidad:
+
+    -   La región geográfica a la que pertenece un país puede influir en los niveles de felicidad.
+        En comparación con la región de referencia África subsahariana, se observa que las regiones Australia y Nueva Zelanda, América Latina y el Caribe, América del Norte y Europa Occidental están asociadas con niveles de felicidad diferentes.
+        En general, las regiones de Australia y Nueva Zelanda y América del Norte tienen niveles más altos de felicidad, mientras que África subsahariana muestra niveles más bajos.
+
+4.  Valor medio de felicidad por región:
+
+    -   En términos del valor medio de felicidad por región, se observa que las regiones de Australia y Nueva Zelanda y América del Norte tienen los valores medios más altos de felicidad, mientras que África subsahariana presenta el valor medio más bajo.
+
+5.  Calidad del modelo:
+
+    -   El modelo desarrollado presenta una buena calidad en términos de ajuste y predicción.
+        Los residuos muestran una dispersión constante y siguen una distribución normal, lo que indica que el modelo se ajusta adecuadamente a los datos.
+        Además, la devianza nula es mayor que la devianza residual, lo que sugiere que el modelo tiene una buena capacidad para predecir la variable dependiente de felicidad.
+
+6.  Variables relevantes para la felicidad ajustada:
+
+    -   Para el modelo ajustado, se consideran significativas las variables Esperanza de vida y Libertad, lo que indica que estos dos factores siguen siendo importantes para explicar los niveles de felicidad.
+        Además, el análisis de odds ratio revela que un aumento en la esperanza de vida y la libertad se asocia con un aumento en las probabilidades de tener un alto nivel de felicidad.
+
+7.  Capacidad de predicción del modelo:
+
+    -   El modelo presenta una capacidad moderada para distinguir entre casos de felicidad y no felicidad, con un área bajo la curva (AUC) de 0.7652.
+        Esto significa que el modelo tiene un rendimiento aceptable, pero no óptimo, para predecir los niveles de felicidad.
+        La curva ROC muestra dos segmentos de línea recta, lo que indica que el modelo tiene cierta capacidad de discriminación, pero podría mejorarse para lograr una mayor precisión en las predicciones.
+
+En resumen, este estudio ha revelado que factores como el entorno familiar, la esperanza de vida y la libertad personal son importantes para influir positivamente en los niveles de felicidad.
+Además, se ha encontrado que la región geográfica de un país puede tener un impacto significativo en los niveles de felicidad, con ciertas regiones mostrando niveles más altos o más bajos en comparación con otras.
+Sin embargo, variables como el producto interno bruto per cápita y la generosidad no se han encontrado como factores determinantes en la felicidad.

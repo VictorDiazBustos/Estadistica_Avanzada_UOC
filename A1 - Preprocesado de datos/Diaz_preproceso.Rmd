@@ -1,0 +1,748 @@
+---
+title: "victordiazb-A1"
+author: "victordiazb"
+date: "Marzo 2023"
+output:
+  html_document:    
+    highlight: default
+    number_sections: no
+    theme: cosmo
+    toc: yes
+    toc_depth: 2
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Importar paquetes y librerias
+if(!require('dplyr')) install.packages('dplyr'); library('dplyr')
+if(!require('ggplot2')) install.packages('ggplot2'); library('ggplot2')
+if (!requireNamespace("stringr", quietly = TRUE)) install.packages('stringr'); library('stringr')
+if(!require('VIM')) install.packages('VIM'); library('VIM')
+if(!require('maps')) install.packages('maps'); library('maps')
+if(!require('psych')) install.packages('psych'); library('psych')
+if(!require('knitr')) install.packages('knitr'); library('knitr')
+if(!require('kableExtra')) install.packages('kableExtra'); library('kableExtra')
+```
+
+# Introducción
+
+El World Happiness Report es un informe que todos los años realiza la Sustainable Development Solutions Network (SDSN) para medir la "felicidad" de los países.
+Se miden variables relacionadas con el nivel socioeconómico y la percepción de factores sociales y políticos: condiciones de vivienda, bienestar, seguridad, acceso a alimentos, educación, corrupción, violencia, entre otros.
+
+El conjunto de datos Happiness.csv, contiene información sobre diferentes factores que se emplean para evaluar la felicidad en distintos países del mundo.
+
+Las variables incluidas en el conjunto de datos son:
+
+-   ***Country***: Nombre del país.
+
+-   ***Region***: Región a la que pertenece el país.
+
+-   ***Happiness.Rank***: Clasificación del país, basado en la puntuación de felicidad.
+
+-   ***Happiness.Score***: Media muestral por país, a la pregunta: ¿Cómo calificarías tu felicidad en escala de 1 de a 10?
+
+-   ***Lower.Confidence.Interval***: Límite inferior del intervalo de confianza de la media de Happiness.Score.
+
+-   ***Upper.Confidence.Interval***: Límite superior del intervalo de confianza de la media de Happiness.Score.
+
+-   ***GDP.por.Capita***: Indicador económico del país.
+
+-   ***Family***: Familia y entorno social.
+    Promedio por país, a la pregunta: ¿tiene familiares o amigos con los que pueda contar?
+
+-   ***Life.Expectancy***: Salud y esperanza de vida en cada país.
+    Datos provenientes de la encuesta de salud.
+
+-   ***Freedom***: Libertad.
+    Promedio por país, a la pregunta: ¿condidera o no que tiene libertad para actuar?
+
+-   ***Government.Corruption***: Corrupción.
+    Percepción del estado de corrupción del pais (política y negocios).
+
+-   ***Generosity***: Generosidad.
+    Promedio por país, a la pregunta: ¿Ha donado o no dinero para caridad, el pasado mes?
+
+El **objetivo** de esta actividad es preparar el archivo para su posterior análisis.
+Para ello, se examinará el archivo para detectar y corregir posibles errores, inconsistencias y valores perdidos.
+Además se presentará un análisis estadístico descriptivo con gráficos.
+
+# Lectura de datos y examinación del tipo de variable
+
+En primer lugar, vamos a cargar los datos utilizando la función *read.csv()*.
+Si *row.names* se establece en *NULL*, R asignará automáticamente nombres de fila únicos a cada fila del archivo.
+Si se establece en un vector de nombres de fila, R utilizará esos nombres como nombres de fila en lugar de asignar nombres de fila únicos.
+
+Posteriormente, haremos un primer acercamiento al contenido con las funciones *str()* (muestra la estructura del dataframe), *head()* (muestra las 6 primeras filas del dataframe) y *summary()* (proporciona un resumen estadístico del dataframe).
+
+Además, vamos a crear un historial de cambios.
+Para ello, vamos a utilizar un data.frame con 3 columnas: *id* (identificador del registro histórico), *fila* (fila a la que afecta el cambio registrado) y *mensaje* (descripción del cambio registrado).
+En este primer registro se van a guardar el número de filas, columnas, variables numéricas y variables categóricas.
+Posteriormente, iremos añadiendo nuevos registros con la función *rbind()*.
+
+```{r}
+# Cargar datos
+path = 'Happiness.CSV'
+data <- read.csv(path, row.names=NULL)
+```
+
+```{r}
+# Crear historial de cambios
+id_registro = 1
+historial <- data.frame(
+  "id"=id_registro, 
+  "fila"="",
+  "mensaje"= paste("num.Filas = ", nrow(data),"; ",
+    "num.Columnas= ", ncol(data), "; ",
+    "num.Var.Numericas = ", length(colnames(data[,sapply(data, is.numeric)])),"; ",
+    "num.Var.Categoricas = ", length(colnames(data[,sapply(data, is.character)])))
+)
+```
+
+```{r}
+# Mostrar estructura de datos
+print(str(data))
+print(head(data))
+```
+
+Tras este primer acercamiento, observamos que hay **4** variables **categóricas** **o cualitativas** (Country, Region, Happines.Score y GDP.per.Capita) y **8** variables **numéricas o cuantitativas** (Happiness.Rank, Lower.Confidence.Interval, Upper.Confidence.Interval, Family, Life.Expectancy, Freedom, Government.Corruption y Generosity).
+
+Observando las primeras filas vemos que algunas de las variables categóricas tienen algunos registros con espacios en blanco al principio de su contenido y otras con valores nulos (*NA*), que se tratarán más adelante.
+Además, las variables categóricas Happiness.Score y GDP.per.Capita realmente tienen valores numéricos, por lo que debemos convertir las variables, unificando además los separadores decimales.
+
+```{r}
+# Registrar cambios ',' por '.'
+id_registro <- id_registro + 1
+ids <- which(grepl(",", data$Happiness.Score) | grepl(",", data$GDP.per.Capita))
+historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids, collapse = ","), "mensaje" = "Caracter '.' como separador decimal"))
+
+# Reemplazar ',' por '.'
+data$Happiness.Score <- gsub(",", ".", data$Happiness.Score)
+data$GDP.per.Capita <- gsub(",", ".", data$GDP.per.Capita)
+
+# Cambiar tipo de variable
+data$Happiness.Score <- as.numeric(data$Happiness.Score)
+data$GDP.per.Capita <- as.numeric(data$GDP.per.Capita)
+
+# Registrar cambios tipo de variable
+id_registro <- id_registro + 1
+historial <- rbind(historial, data.frame("id" = id_registro, "fila" ="", "mensaje" = "Variables Happiness.Score y GDP.per.Capita convertidas a variables numéricas"))
+
+# Mostrar nueva estructura de datos
+print(str(data))
+
+# Mostrar análisis estadístico
+print(summary(data))
+```
+
+Ahora nos quedan **2** variables **categóricas** **o cualitativas** (Country y Region)v y **9** variables **numéricas o cuantitativas** (Happines.Score, Happiness.Rank, Lower.Confidence.Interval, Upper.Confidence.Interval, Family, Life.Expectancy, Freedom, Government.Corruption, GDP.per.Capita y Generosity).
+
+Por último, del análisis estadístico se obtienen los siguientes resultados:
+
+-   *Happiness.Rank*: Mínimo de 1, máximo de 157, media de 78.98, mediana de 79.00.
+
+-   *Happiness.Score*: Mínimo de 2.732, máximo de 8.241, media de 5.359, mediana de 5.308.
+    Hay 15 observaciones faltantes.
+
+-   *Lower.Confidence.Interval*: Mínimo de 3.078, máximo de 7.669, media de 5.359, mediana de 5.308.
+
+-   *Upper.Confidence.Interval*: Mínimo de 3.078, máximo de 7.669, media de 5.482, mediana de 5.419.
+
+-   *GDP.per.Capita*: Mínimo de 0.0000, máximo de 1.8243, media de 0.7854, mediana de 0.8322.
+    Hay 5 observaciones faltantes.
+
+-   *Family*: Mínimo de 0.0000, máximo de 1.1728, media de 0.9647, mediana de 1.067.
+    Hay 23 observaciones faltantes.
+
+-   *Life.Expectancy*: Mínimo de 0.0000, máximo de 0.9528, media de 0.5576, mediana de 0.5966.
+
+-   *Freedom*: Mínimo de 0.0000, máximo de 0.6085, media de 0.3710, mediana de 0.3975.
+
+-   *Government.Corruption*: Mínimo de 0.00000, máximo de 0.50521, media de 0.13762, mediana de 0.10547.
+
+-   *Generosity*: Mínimo de 0.0000, máximo de 0.8197, media de 0.2426, mediana de 0.2225.
+
+Finalmente, antes de proceder a la normalización de variables, vamos a simplificar el nombre de variables con un nombre largo, reemplazándolo por la primera de cada palabra que lo compone.
+
+```{r}
+# Indices de variables modificadas
+ids <- grep("\\.", names(data))
+nombres_cambiados <- names(data[ids])
+
+# Cambio de nombres
+names(data)[names(data) == "Happiness.Rank"] <- "HR"
+names(data)[names(data) == "Happiness.Score"] <- "HS"
+names(data)[names(data) == "Lower.Confidence.Interval"] <- "LCI"
+names(data)[names(data) == "Upper.Confidence.Interval"] <- "UCI"
+names(data)[names(data) == "GDP.per.Capita"] <- "GpC"
+names(data)[names(data) == "Life.Expectancy"] <- "LE"
+names(data)[names(data) == "Government.Corruption"] <- "GC"
+
+# Mostrar nueva estructura de datos
+print(str(data))
+
+# Registrar cambios
+nuevos_nombres <- names(data[ids])
+cambio_nombres <- data.frame("antiguo"=nombres_cambiados, "nuevo"=nuevos_nombres)
+
+id_registro <- id_registro + 1
+historial <- rbind(historial, data.frame("id" = id_registro, "fila" = "", "mensaje" = paste("Cambio de nombres de variables: ", paste(cambio_nombres$antiguo, collapse = ", "), " -> ", paste(cambio_nombres$nuevo, collapse = ", "))))
+```
+
+# Normalización de las variables cuantitativas
+
+En este apartado, vamos a normalizar las variables cuantitativas.
+
+En el apartado anterior hemos tratado ya la uniformidad en los **separadores decimales**, por lo que todas las variables numéricas utilizan ya el separador *'.'*.
+
+En cuanto a la **estandarización de variables a las mismas unidades**, basándonos en el análisis estadístico anterior, vemos que, por los valores máximos y mínimos de cada variable, los datos están en la misma unidad.
+
+El resto de normalizaciones especificadas en el enunciado como el **cambio de nombre** y de **formato** de variables ya ha sido llevado a cabo en el apartado anterior
+
+# Normalización de las variables cualitativas
+
+A continuación, vamos a normalizar las variables cualitativas.
+Para ello, en primer lugar, vamos a convertir los datos a formato **título** mediante el uso de la función *str_to_title()*.
+Posteriormente, **eliminaremos espacios en blanco, tabulaciones y saltos de línea** presentes al inicio o al final del texto mediante la función *trimws()*, así como **espacios en blanco duplicados** entre palabras utilizando *gsub()* (*"\\\\s{2,}"* es una expresión regular que busca dos o más espacios en blanco) y **acentos** utilizando la función *iconv()*.
+Finalmente, mostraremos la **tabla de frecuencias** de cada variable con la función *table()*.
+
+```{r}
+# Convertir a título
+data$Region <- str_to_title(data$Region)
+data$Country <- str_to_title(data$Country)
+
+# Registrar cambios a formato titulo
+id_registro <- id_registro + 1
+historial <- rbind(historial, data.frame("id" = id_registro, "fila" ="\\*", "mensaje" = "Variables Region y Country convertidas a formato titulo"))
+```
+
+```{r}
+# Filas con espacios y tabulaciones o saltos de línea al principio y al final del contenido
+ids_region <- which(trimws(data$Region) != data$Region)
+ids_country <- which(trimws(data$Country) != data$Country)
+
+# Quitar espacios y tabulaciones o saltos de línea al principio y al final del contenido
+data$Region <- trimws(data$Region)
+data$Country <- trimws(data$Country)
+
+# Registrar cambios
+if(length(ids_region) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_region, collapse = ","), "mensaje" = "Eliminados espacios y tabulaciones o saltos de línea al principio y al final del contenido en la variable Region"))
+}
+if(length(ids_country) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_country, collapse = ","), "mensaje" = "Eliminados espacios y tabulaciones o saltos de línea al principio y al final del contenido en la variable Country"))
+}
+```
+
+```{r}
+# Filas con espacios en blanco duplicados
+ids_region <- which(gsub("\\s{2,}", " ", data$Region) != data$Region)
+ids_country <- which(gsub("\\s{2,}", " ", data$Country) != data$Country)
+
+# Dejar un espacio en blanco entre palabras
+data$Region <- gsub("\\s{2,}", " ", data$Region)
+data$Country <- gsub("\\s{2,}", " ", data$Country)
+
+# Registrar cambios
+if(length(ids_region) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_region, collapse = ","), "mensaje" = "Eliminados espacios duplicados en la variable Region"))
+}
+if(length(ids_country) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_country, collapse = ","), "mensaje" = "Eliminados espacios duplicados en la variable Country"))
+}
+```
+
+```{r}
+# Filas con acentos
+ids_region <- which(iconv(data$Region) != data$Region)
+ids_country <- which(iconv(data$Country) != data$Country)
+
+# Eliminar acentos
+data$Region <- iconv(data$Region)
+data$Country <- iconv(data$Country)
+
+# Registrar cambios
+if(length(ids_region) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_region, collapse = ","), "mensaje" = "Eliminados acentos en la variable Region"))
+}
+if(length(ids_country) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_country, collapse = ","), "mensaje" = "Eliminados acentos en la variable Country"))
+}
+```
+
+```{r}
+# Mostrar tabla de frecuencias
+print(table(head(data$Country, 20)))
+print(table(data$Region))
+```
+
+Vemos que hay **errores sintácticos** como *"Middle East And Northern Afrca"* y *"Sub-Saharan Afrca"* en la variable Region que reemplazaremos por *"Middle East And Northern Africa"* y *"Sub-Saharan Africa"*, respectivamente, mediante el uso de la función *gsub()* que busca las cadenas de texto especificadas como primer argumento y las reemplaza con las cadenas especificadas como segundo argumento..
+
+```{r}
+# Filas con errores sintácticos
+ids <- which(grepl("Afrca", data$Region))
+
+# Reemplazar errores sintácticos
+data$Region <- gsub("Afrca", "Africa", data$Region)
+
+# Registrar cambios
+if(length(ids) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_region, collapse = ","), "mensaje" = "Eliminados errores sintacticos en la variable Region"))
+}
+
+# Mostrar nueva tabla de frecuencias
+print(table(data$Region))
+```
+
+Por último, reemplazaremos los textos "And" por "and" con *gsub()*.
+
+```{r}
+# Filas con "errores sintácticos "And"
+ids_region <- which(grepl("And", data$Region))
+ids_country <- which(grepl("And", data$Country))
+
+# Reemplazar "And" por "and"
+data$Region <- gsub("And", "and", data$Region)
+data$Country <- gsub("And", "and", data$Country)
+
+# Registrar cambios
+if(length(ids_region) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_region, collapse = ","), "mensaje" = "Reemplaza 'And' por 'and' en la variable Region"))
+}
+if(length(ids_country) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids_country, collapse = ","), "mensaje" = "Reemplaza 'And' por 'and' en la variable Country"))
+}
+
+# Mostrar nueva tabla de frecuencias
+print(table(data$Region))
+print(table(head(data$Country, 20)))
+```
+
+# Estudio de inconsistencia entre variables
+
+En este apartado vamos a buscar inconsistencias entre los pares de variables HR-HS y LCI-UCI.
+En caso de inconsistencia entre las variables HR y HS, se tomará como dato correcto el correspondiente a la variable HS y por tanto, habrá que rectificar los valores erróneos de HR.
+La inconsistencia entre las variables LCI y UCI, se observará cuando el valor LCI sea mayor a UCI.
+En estos casos, se procederá a intercambiar los valores.
+
+## HR vs HS
+
+En primer lugar vamos a buscar inconsistencias entre HR y HS.
+Para ello, vamos a ordenar los datos por orden descendente de HS utilizando la función *arrange()* para ordenar nos datos y *desc()* para indicar el orden descendente.
+Posteriormente, se comprueba que la posición de cada dato en ese orden coincide con su valor de HR, en caso contrario, es una inconsistencia y, por tanto, se debe reemplazar el valor de HR por el de esta posición.
+
+```{r}
+# Ordenar por HS
+data <- arrange(data, desc(HS))
+
+# Obtener inconsistencias, compara valor de HR con su posición en un HS ordenado
+ids <- which(data$HR != as.integer(row.names(data)))
+
+# Guardar datos en un dataframe
+inconsistencias <- data.frame("HR_original"=data[ids, "HR"],"HR_esperado"=as.integer(row.names(data[ids,])))
+
+# Si hay inconsistencias
+if (length(ids) > 0) {
+  # Corregir valores de HR
+  data$HR <- as.integer(row.names(data))
+  cat("Se han corregido", length(ids), "valores incorrectos en HR.\n")
+  print(inconsistencias)
+  
+  # Registrar cambios
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids, collapse = ","), "mensaje" = "Inconsistencias corregidas en las variables HS y HR"))
+
+} else {
+  cat("Los valores de HR son consistentes con el orden de HS.\n")
+}
+```
+
+## LCI vs UCI
+
+A continuación, buscamos inconsistencias en las variables LCI y UCI.
+Para ello, comparamos los valores de ambas columnas y, en los casos en los que el valor de LCI sea mayor que UCI, se intercambiarán estos valores.
+
+```{r}
+# Se buscan inconsistencias
+ids <- which(data$LCI > data$UCI)
+
+if(length(ids) > 0){
+  # Obtener los valores máximos y mínimos entre UCI y LCI
+  max_vals <- pmax(data$UCI, data$LCI)
+  min_vals <- pmin(data$UCI, data$LCI)
+  
+  # Asignar los valores máximos y mínimos a las variables correspondientes
+  data$UCI <- max_vals
+  data$LCI <- min_vals
+  
+  cat("Se han corregido", length(ids), "inconsistencias ente UCI y LCI.\n")
+  
+  # Registrar cambios
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids, collapse = ","), "mensaje" = "Inconsistencias corregidas en las variables UCI y LCI"))
+} else {
+  print("Los valores de UCI y LCI son consistentes.\n")
+}
+```
+
+# Valores atípicos
+
+## Revisar valores atípicos
+
+En este apartado vamos a buscar valores atípicamente altos o bajos en las variables HS, GC, Generosity y Family, los cuales consideraremos valores anómalos y los reemplazaremos por el valor nulo (*NA*).
+Para ello, vamos a utilizar la función *boxplot.stats()*, que calcula estadísticas de resumen sobre los datos y devuelve un objeto con las siguientes componentes: "stats" (los valores mínimo, primer cuartil, mediana, tercer cuartil y máximo), "n" (el número de observaciones), "conf" (un intervalo de confianza para la mediana) y "out" (los valores atípicos).
+Por otro lado, la función *boxplot()* nos permite visualizar un diagrama de caja y bigotes y ver así fácilmente los percentiles y los outliers.
+
+```{r}
+total_indices_atipicos = c()
+for (i in c("HS", "GC", "Generosity", "Family")){
+  # Mostrar diagrama de cajas
+  boxplot(data[[i]],main=i, col="gray")
+  
+  # Mostrar valores atípicos
+  x<-boxplot.stats(data[[i]])$out
+  ids <- which(data[[i]] %in% x)
+  listaAtipicos <- sort(data[[i]][ids])
+  
+  if(length(listaAtipicos) > 0){
+    total_indices_atipicos <-  append(total_indices_atipicos, ids, after = length(total_indices_atipicos))
+    cat("Valores atipicos: ", listaAtipicos, "\n")
+    
+    # Sustituir valores atípicos por valores nulos
+    data[[i]] <- ifelse(data[[i]] %in% listaAtipicos, NA, data[[i]])
+    
+    # Registrar cambios
+    id_registro <- id_registro + 1
+    historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids, collapse = ","), "mensaje" = paste("Valores atípicos reemplazados por valor nulo en la variable ", i)))
+    
+  } 
+  else{
+    print("No valores atipicos para esta variable.")
+  }
+}
+```
+
+## Identificar a qué paises pertenecen los valores atípicos encontrados
+
+```{r}
+cat("Los valores atípicos detectados pertenecen a los siguientes paises: ", data[total_indices_atipicos,"Country"])
+```
+
+# Imputación de valores
+
+A continuación, procedemos a buscar si hay valores perdidos (*NAs*) en las variables cuantitativas.
+Para ello, usaremos la función *is.na()* de R.
+En el caso de detectar alguno, es necesario realizar una imputación de valores en estas variables.
+Aplicaremos imputación por vecinos más cercanos, utilizando la distancia de Gower, considerando en el cómputo de los vecinos más cercanos el resto de variables cuantitativas.
+
+La distancia de **Gower** es una medida de distancia utilizada en el análisis de datos multivariados para calcular la distancia entre dos objetos.
+Se calcula como la suma de las distancias ponderadas de las variables individuales, donde cada variable tiene un peso igual al inverso del número de valores distintos para esa variable en el conjunto de datos.
+Por ejemplo, si una variable categórica tiene 5 valores distintos en el conjunto de datos, su peso sería 1/5.
+La distancia Gower tiene la ventaja de poder manejar datos de diferentes tipos y escalas, lo que la hace útil en problemas de clustering y análisis de datos heterogéneos.
+Además, es una medida de distancia simétrica, es decir, la distancia entre dos objetos es la misma independientemente del orden en que se consideren.
+
+$D_{x_{i}x_{j}} = \frac{\sum_{r=1}^{p}W_{x_{i}x_{j}z_{r}}D_{x_{i}x_{j}z_{r}}}{\sum_{r=1}^{p}W_{x_{i}x_{j}z_{r}}} + \frac{\sum_{r=1}^{q-p}W_{x_{i}x_{j}c_{r}}D_{x_{i}x_{j}c_{r}}}{\sum_{r=1}^{q-p}W_{x_{i}x_{j}c_{r}}}$
+
+Donde $x_{i}$ y $x_{j}$ representan dos objetos o individuos en el conjunto de datos que se están comparando.
+$W_{x_{i}x_{j}z_{r}}$ y $W_{x_{i}x_{j}c_{r}}$ son los pesos para las variables categóricas ($z_{r}$) y continuas ($c_{r}$), respectivamente.
+$D_{x_{i}x_{j}z_{r}}$ es la distancia Manhattan a lo largo de una variable categórica $z_{r}$ que puede obtenerse como
+
+$$
+D_{x_{i}x_{j}z_{r}} = 
+\begin{cases}
+  0, & \text{si } z_{r}^{i} = z_{r}^{j} \\
+  1, & \text{si } z_{r}^{i} \neq z_{r}^{j} \\
+\end{cases}
+$$
+
+$D_{x_{i}x_{j}c_{r}}$ es la distancia Manhattan a lo largo de una variable contínua $c_{r}$ que puede obtenerse como $D_{x_{i}x_{j}c_{r}} = \frac{|c_{r}^{i} - c_{r}^{j}|}{max(c_{r}) - min(c_{r})}$.
+
+Aunque la distancia Manhattan se utiliza en el cálculo de la disimilitud original de Gower, pueden utilizarse otras métricas de distancia.
+
+**[ref]** *Gulanbaier Tuerhong, Seoung Bum Kim. (2014). "Gower distance-based multivariate control charts for a mixture of continuous and categorical variables". Expert Systems with Applications. Volume 41, Issue 4, Part 2. Pages 1701-1707.* (<https://www.sciencedirect.com/science/article/pii/S0957417413006891>)
+
+Para realizar esta imputación, se puede usar la función *kNN()* de la librería VIM con un número de vecinos igual a 11.
+Esta función realiza imputación por vecinos más cercanos para datos faltantes en un conjunto de datos.
+Utiliza la distancia de Gower para calcular la distancia entre los diferentes puntos del conjunto de datos, y después encuentra los vecinos más cercanos de cada punto que tenga datos faltantes, basándose en las variables que sí tienen datos para calcular la distancia.
+
+```{r}
+# Motrar número de NAs en cada columna
+print(colSums(is.na(data)))
+
+# Imputar valores mediante KNN con k=11
+data <- kNN(data, k=11)
+print(str(data))
+
+# Filas imputadas
+ids <- which(apply(data, 1, function(x) any(x == TRUE)))
+
+# Registrar cambios
+if(length(ids) > 0){
+  id_registro <- id_registro + 1
+  historial <- rbind(historial, data.frame("id" = id_registro, "fila" = paste(ids, collapse = ","), "mensaje" = "Valores nulos imputados"))
+}
+```
+
+Eliminamos las nuevas columnas agregadas.
+
+```{r}
+# Eliminar las nuevas columnas agregadas
+data <- data[1:(length(data)/2)]
+
+# Registrar cambios
+id_registro <- id_registro + 1
+historial <- rbind(historial, data.frame("id" = id_registro, "fila" ="", "mensaje" = "Filas agregadas por kNN no utilizas eliminadas"))
+
+```
+
+Mostramos que la imputación se ha realizado correctamente, visualizando el resultado de los datos afectados por la imputación.
+
+```{r}
+for (i in c("GC", "Generosity", "Family")){
+  # Mostrar diagrama de cajas
+  boxplot(data[[i]],main=i, col="gray")
+}
+```
+
+Vemos que los valores atípicos han desaparecido.
+
+Además, gracias a usar kNN en vez de la imputación básica mediante el valor **promedio**, se tienen en cuenta la estructura de los datos y las relaciones entre variables, dando mayor precisión a los datos imputados.
+
+Esto se podría lograr también con un modelo de **regresión lineal**, pero kNN puede ser más robusta que una regresión lineal cuando no se cumple la suposición de linealidad en los datos, ya que k-NN no asume una relación lineal entre las variables predictoras y la variable de interés, aunque la imputación por regresión lineal puede llegar a ser más precisa si se dan estas condiciones.
+
+# Estudio descriptivo
+
+## Representación gráfica de variables
+
+En este apartado, vamos a representar gráficamente los datos de la variable Freedom en función de la variable Region.
+Para ello, lo más sencillo es hacer un gráfico de barras con estas dos variables.
+Utilizamos la función *aggregate()* para agrupar los datos de Freedom en función de Region y, posteriormente, con las funciones de la libreria *ggplot2* creamos el gráfico de barras.
+
+```{r}
+# Agrupar por region y calcular la media de la variable Freedom
+avg_data <- aggregate(Freedom ~ Region, data, "mean")
+
+# Hacer el barplot
+ggplot(avg_data, aes(x = Region, y = Freedom)) +
+  geom_bar(stat = "identity", fill = "#1E90FF") +
+  labs(x = "Region", y = "Freedom") +
+  theme(axis.text.x = element_text(angle = 90)) # Rotar etiquetas 90º
+```
+
+Una representación más avanzada y compleja puede ser mostrar estos datos en un mapa, dando un color a cada país en función de la región a la que pertenezca y de su grado de libertad.
+Aunque esto no es necesario, puede ser muy interesante y visual de cara a su análisis.
+Para ello, utilizamos las funciones de la librería *maps*.
+
+```{r}
+# Obtener los nombres de las regiones predefinidas en el paquete maps
+nombres_paises <- map("world", plot = FALSE, fill = TRUE)$names
+
+# Añado columna de paises a las regiones
+avg_data.countries <- merge(data[c("Country","Region")], avg_data, by = "Region")
+
+# Cambio de formato
+avg_data.countries$Country <- gsub("United States*", "USA", avg_data.countries$Country)
+
+# Muestro los paises sin coincidencias con los nombres del mapa
+cat("Paises que no se han podido representar: {", subset(avg_data.countries, !Country %in% nombres_paises)$Country, "}\n")
+
+# Elimino paises que no tengan coincidencias con los nombres del mapa
+avg_data.countries <- subset(avg_data.countries,Country %in% nombres_paises)
+
+# Crear un vector de colores según los valores de "Freedom"
+colores <- rev(heat.colors(5))[as.numeric(cut(avg_data.countries$Freedom, breaks = 5))]
+
+# Crear el mapa y colorear las regiones según los datos de "Freedom"
+map("world", fill = TRUE, col = colores[match(nombres_paises, avg_data.countries$Country)], resolution = 0, mar = c(0, 0, 0, 0))
+
+# Añadir una leyenda
+legend("bottomleft", legend = levels(cut(avg_data.countries$Freedom, breaks = 5)), fill = rev(heat.colors(5)), title = "Freedom")
+
+```
+
+Aquí podemos ver otra representación gráfica.
+Aunque faltan algunos paises, debido a diferencias de formato, ofrece una visión muy representativa de los datos.
+
+## Medidas características
+
+A continuación, vamos a calcular las medidas de tendencia central, tanto robustas como no robustas, y las medidas de dispersión de las variables cuantitativas numéricas.
+Para ello, utilizaremos las funciones *mean()*, *median(), mean(x,trim=), winsor.mean(x,trim=), sd(), IQR()* y *mad()* para obtener la media aritmética, mediana, media recortada, media winsorizada, desviación estándar, rango intercuartílico y desviación absoluta respecto de la mediana, respectivamente.
+Por último, utilizaremos la función *kable()* para representar el dataframe como una tabla.
+
+```{r}
+
+medidas_tendencias_centrales = data.frame(
+  "Variable" = character(),
+  "Media.Aritmetica" = numeric(),
+  "Mediana" = numeric(),
+  "Media.Recortada" = numeric(),
+  "Media.Winsorizada" = numeric()
+)
+
+medidas_dispersion = data.frame(
+  "Variable" = character(),
+  "Desviación.Estandar" = numeric(),
+  "Rango.Intercuartilico" = numeric(),
+  "Desviación.Absoluta.Respecto.Mediana" = numeric())
+
+for(i in colnames(data[, sapply(data, is.numeric)])){
+    medidas_tendencias_centrales <- rbind(medidas_tendencias_centrales, data.frame(
+      "Variable" = i,
+      "Media.Aritmetica" = mean(data[[i]]),
+      "Mediana" = median(data[[i]]),
+      "Media.Recortada" = mean(data[[i]],trim=0.5),
+      "Media.Winsorizada" = winsor.mean(data[[i]],trim=0.5)
+    ))
+    
+    
+    medidas_dispersion <- rbind(medidas_dispersion, data.frame(
+      "Variable" = i,
+      "Desv♥iación.Estandar" = sd(data[[i]]),
+      "Rango.Intercuartilico" = IQR(data[[i]]),
+      "Desviación.Absoluta.Respecto.Mediana" = mad(data[[i]])
+    ))
+}
+
+kable(medidas_tendencias_centrales, digits=4, caption="Estimaciones de Tendencia Central")
+kable(medidas_dispersion, digits=4, caption="Estimaciones de Dispersion")
+```
+
+# Archivo final
+
+Finalmente, vamos a guardar el resultado de los datos en un archivo llamado *Happiness_clean.csv,* utilizando el carácter ',' como delimitador (carácter por defecto) , y sin almacenar el número de fila de cada registro (*row.names = FALSE*).
+
+```{r}
+write.csv(data, "Diaz_Happiness_clean.csv", row.names = FALSE)
+```
+
+# Informe ejecutivo
+
+## Representación de los principales resultados
+
+En este apartado, vamos a mostrar una tabla con los cambios realizados a lo largo de todo el proceso.
+Para ello, vamos a utilizar la función *kable()* para crear una tabla a raíz de un dataframe, *kable_styling()* con si configuración por defecto para aplicar estilos de CSS a la tabla.
+
+```{r}
+# Añadir estado final
+id_registro <- id_registro + 1
+historial <- rbind(historial, data.frame(
+  "id"=id_registro, 
+  "fila"="",
+  "mensaje"= paste("num.Filas = ", nrow(data),"; ",
+    "num.Columnas= ", ncol(data), "; ",
+    "num.Var.Numericas = ", length(colnames(data[,sapply(data, is.numeric)])),"; ",
+    "num.Var.Categoricas = ", length(colnames(data[,sapply(data, is.character)])))
+))
+
+# Mostrar historial de cambios
+historial %>%
+  kable(caption="Resumen del preproceso", row.names = FALSE) %>%
+  kable_styling()
+```
+
+## Resumen estadístico
+
+Tras el preprocesado de los datos, podemos sacar las siguientes conclusiones acerca de las distintas variables:
+
+-   ***Country***: Variable categórica.
+    Representa el nombre del país.
+
+-   ***Region***: Variable categórica.
+    Representa la región a la que pertenece el país.
+    Los paises de América del Norte, Europa Occidental y Oceanía tienen un grado medio de libertad alto en comparación con el resto.
+    Los paises pertenecientes a Latino América y América del Sur tienen un grado de libertad medio.
+    Los paises pertenecientes a Asia, África y Europa Oriental tienen un grado de libertad bajo.
+
+-   ***HR***: Variable numética.
+    Representa la clasificación del país, basado en la puntuación de felicidad.
+    Los valores de media, mediana, media recortada y mediana winsorozada son los mismos (79) ya que, al tratarse de una clasificación, los registros tienen valores de una secuencia uniforme, por lo que la distribución de los datos es completamente simétrica y no hay valores extremos que afecten significativamente la media.
+    En cuanto a las estimaciones de dispersión, la desviación estándar es alta (45.4661), lo que indica que los datos están muy dispersos.
+    El rango intercuartílico es de 78, lo que indica que el 50% central de los datos de HR están dentro de un rango de 78 puntos.
+    La desviación absoluta respecto a la mediana es de 57.8214, lo que indica que los datos están bastante dispersos alrededor de la mediana.
+
+-   ***HS***: Variable numética.
+    Representa la media muestral por país, a la pregunta: ¿Cómo calificarías tu felicidad en escala de 1 de a 10?
+    La media aritmética, la mediana, la media recortada y la media winsorizada son diferentes entre sí, pero son relativamente cercanas (5.3822, 5.3140, 5.3140 y 5.3140, respectivamente).
+    Esto sugiere que la distribución de los datos de la variable HS es unimodal y simétrica.
+    La desviación estándar es relativamente baja (1.1417), lo que indica que los datos están bastante agrupados alrededor de la media.
+    El rango intercuartílico es de 1.8650, lo que indica que el 50% central de los datos de HS están dentro de un rango de 1.8650 puntos.
+    La desviación absoluta respecto a la mediana es de 1.3714, lo que indica que los datos están bastante dispersos alrededor de la mediana.
+
+-   ***LCI***: Variable numética.
+    Representa el límite inferior del intervalo de confianza de la media de HS.
+    La media aritmética, la mediana, la media recortada y la media winsorizada son todas iguales (5.2975), lo que sugiere que la distribución de los datos de la variable LCI es simétrica.
+    La desviación estándar es relativamente baja (1.1480), lo que indica que los datos están bastante agrupados alrededor de la media.
+    El rango intercuartílico es de 1.7980, lo que indica que el 50% central de los datos de LCI están dentro de un rango de 1.7980 puntos.
+    La desviación absoluta respecto a la mediana es de 1.3373, lo que indica que los datos están bastante dispersos alrededor de la mediana.
+
+-   ***UCI***: Variable numética.
+    Representa el límite superior del intervalo de confianza de la media de HS.
+    La media aritmética, la mediana, la media recortada y la media winsorizada son todas iguales (5.5433), lo que sugiere que la distribución de los datos de la variable UCI es simétrica.
+    La desviación estándar es relativamente baja (1.1638), lo que indica que los datos están bastante agrupados alrededor de la media.
+    El rango intercuartílico es de 1.8620, lo que indica que el 50% central de los datos de UCI están dentro de un rango de 1.8620 puntos.
+    La desviación absoluta respecto a la mediana es de 1.4381, lo que indica que los datos están bastante dispersos alrededor de la mediana.
+
+-   ***GpC***: Variable numética.
+    Representa el indicador económico del país.
+    La media aritmética es de 7.9520, lo que sugiere que el promedio de la tasa de mortalidad infantil es relativamente alta en la muestra.
+    Sin embargo, la mediana, media recortada y media winsorizada son muy bajas, de solo 1.0278.
+    Esto sugiere que hay algunos valores extremadamente altos que están afectando la media aritmética, lo que podría ser indicativo de la presencia de valores atípicos en los datos.
+    La desviación estándar es de 28.6186, lo que indica una gran variabilidad en los datos.
+
+-   ***Family***: Variable numética.
+    Representa la familia y entorno social.
+    Promedio por país, a la pregunta: ¿tiene familiares o amigos con los que pueda contar?
+    La media aritmética es de 0.7969, lo que sugiere que en promedio, los encuestados tienen una percepción positiva de la calidad de la vida familiar en la muestra.
+    La mediana, media recortada y media winsorizada son todas muy similares, de 0.8414.
+    Esto sugiere que no hay valores extremos que estén afectando significativamente la medida de tendencia central.
+    La desviación estándar es de 0.2584, lo que indica cierta variabilidad en los datos, aunque no es muy alta.
+    En esta variable se encontró 1 valor atípico u outlier que ha sido reemplazado por los valores de los vecinos más cercanos.
+
+-   ***LE***: Variable numética.
+    Representa la salud y esperanza de vida en cada país.
+    Datos provenientes de la encuesta de salud.
+    La media aritmética es de 0.5576, lo que indica una esperanza de vida relativamente baja en la muestra.
+    La mediana, media recortada y media winsorizada son todas muy similares, de 0.5966.
+    Esto sugiere que no hay valores extremos que estén afectando significativamente la medida de tendencia central.
+    La desviación estándar es de 0.2293, lo que indica cierta variabilidad en los datos, aunque no es muy alta.
+
+-   ***Freedom***: Variable numética.
+    Representa la libertad.
+    Promedio por país, a la pregunta: ¿condidera o no que tiene libertad para actuar?
+    La media aritmética es de 0.3710, lo que sugiere que en promedio, los encuestados tienen una percepción relativamente baja de la libertad en la muestra.
+    La mediana, media recortada y media winsorizada son todas muy similares, de 0.3975.
+    Esto sugiere que no hay valores extremos que estén afectando significativamente la medida de tendencia central.
+    La desviación estándar es de 0.1455, lo que indica cierta variabilidad en los datos, aunque no es muy alta.
+
+-   ***GC***: Variable catenuméticagórica.
+    Representa la corrupción.
+    Percepción del estado de corrupción del pais (política y negocios).
+    La media aritmética es de 0.1205, lo que sugiere que en promedio, los encuestados tienen una percepción bastante baja de la corrupción en la muestra.
+    La mediana, media recortada y media winsorizada son todas muy similares, de 0.1039.
+    Esto sugiere que no hay valores extremos que estén afectando significativamente la medida de tendencia central.
+    La desviación estándar es de 0.0807, lo que indica que la variabilidad en los datos es relativamente baja.
+    En esta variable se encontraron 12 valores atípicos u outliers que han sido reemplazados por los valores de los vecinos más cercanos.
+
+-   ***Generosity***: Variable numética.
+    Representa la generosidad.
+    Promedio por país, a la pregunta: ¿Ha donado o no dinero para caridad, el pasado mes?
+    La media aritmética es de 0.2308, lo que sugiere que en promedio, los encuestados tienen una percepción relativamente alta de la generosidad en la muestra.
+    La mediana, media recortada y media winsorizada son todas muy similares, de 0.2167.
+    Esto sugiere que no hay valores extremos que estén afectando significativamente la medida de tendencia central.
+    La desviación estándar es de 0.1170, lo que indica cierta variabilidad en los datos, aunque no es muy alta.
+    En esta variable se encontraron 4 valores atípicos u outliers que han sido reemplazados por los valores de los vecinos más cercanos.

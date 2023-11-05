@@ -1,0 +1,734 @@
+---
+title: 'A4: Análisis de varianza y repaso del curso'
+author: "victordiazb"
+date: "Abril 2023"
+output:
+  html_document:    
+    highlight: default
+    number_sections: no
+    theme: cosmo
+    toc: yes
+    toc_title: "Indice"
+    toc_depth: 2
+  pdf_document:
+    highlight: zenburn
+    toc: yes
+    toc_title: "Indice"
+    toc_depth: 2
+editor_options:
+  markdown:
+    wrap: sentence
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# Importar paquetes y librerias
+if(!require('caret')) install.packages('caret'); library('caret')
+if(!require('dplyr')) install.packages('dplyr'); library('dplyr')
+```
+
+# Introducción
+
+El conjunto de datos fifa22.csv se encuentra disponible en la plataforma Kaggle: <https://www.kaggle.com/d>[atasets/stefanoleone992/fifa-22-complete-player-dataset](https://www.kaggle.com/datasets/stefanoleone992/fifa-22-complete-player-dataset) .
+
+Este conjunto de datos contiene el estilo de juego del videojuego de consola Fifa 2022, así como estadísticas reales de los jugadores de fútbol.
+
+Las principales variables que usaremos en esta actividad son:
+
+-   **wage**: salario del jugador semanal en EUR.
+
+-   **value_eur**: valor de mercado del jugador.
+
+-   **overall**: puntuación del jugador del 0 a 100.
+
+-   **age**: edad del jugador.
+
+-   **club_position**: posición de juego del jugador.
+
+-   **league_level**: del 1 al 5, de más a menos nivel de la liga, siendo 1 el máximo.
+
+-   **international_reputation**: reputación internacional del jugador, del 1 al 5, de más a menos, siendo 1 el máximo.
+
+-   **nationality_name**: nacionalidad del jugador.
+
+-   **nation_team_id**: jugador de la selección del país.
+    Identificador de la selección nacional
+
+Además de estas, utilizaremos la variable:
+
+-   **league_name**: liga a la que pertenece el jugador
+
+El resto de información se puede consultar en <https://www.sofifa.com>
+
+En esta actividad se analizará si el salario y valor de mercado está influido por la liga y si juega con la selección nacional.
+Nos centraremos en los jugadores que son estrellas del fútbol.
+Para hacerlo, se aplican diferentes tipos de análisis, revisando el contraste de hipótesis de dos muestras, vistos en la actividad A2, y después realizando análisis más complejos como ANOVA.
+
+# 1. Preprocesado
+
+Cargamos los datos especificando la cofidicación '*latin1*' debido al uso del simbolo £ y visualizamos su estructura.
+
+```{r}
+# Cargar datos
+path = "fifa22.csv"
+data <- read.csv(path, row.names=1, fileEncoding="latin1")
+
+# Seleccionar variables
+data <- data[c("wage","value_eur","overall","age","club_position","league_level","international_reputation","nationality_name","nation_team_id","league_name")]
+```
+
+```{r}
+# Mostrar estructura de datos
+print(str(data))
+print(head(data))
+```
+
+## 1.1. Variables wage y age
+
+Convertimos los valores de *wage* que están en libras a euros (£1 = 1,13€).
+
+```{r}
+# Función para convertir valores de libras a euros
+convert_to_euros <- function(value) {
+  if (!is.na(value) && substr(value, 1, 1) == "£") {
+    value <- gsub("£", "", value)  # Eliminar el símbolo de libra (£)
+    value <- as.numeric(value) * 1.13  # Convertir a número y multiplicar por el factor de conversión
+  }
+  return(value)
+}
+
+# Aplicar la función a la columna "wage" de un dataframe y convertir el tipo de variable
+data$wage <- as.integer(sapply(data$wage, convert_to_euros))
+
+# Mostrar nueva estructura de datos
+print(str(data))
+```
+
+Buscamos inconsistencias, para ello, visualizamos un breve resumen y un histograma de estas variables
+
+```{r}
+summary(data$wage)
+summary(data$age)
+hist(data$wage)
+hist(data$age)
+```
+
+En el caso de la edad, vemos que los valores están comprendidos entre 16 y 54 años, encontrándose la mayor parte de ellos entre los 20 y los 30, siguiendo así una distribución normal, lo cual es completamente coherente.
+
+En cuanto al salario semanal, apreciamos 61 valores nulos y un posible outlier en el valor máximo.
+Para tratarlo, vamos a visualizarlo mediante un boxplot.
+
+```{r}
+boxplot(data$wage)
+```
+
+Gracias al boxplot apreciamos que hay un gran número de datos por encima del límite superior del boxplot, , aunque simplemente podría tratarse de un crecimiento exponencial en función de la puntuación del jugador, entre otras cosas.
+
+Para comprobarlo, vamos a discretizar las puntuaciones en rangos de 10 en 10 para agrupar los salarios en funcion de estos rangos y vamos a visualizar los boxplots de cada uno de estos grupos.
+
+```{r}
+# Discretizar la variable "overall" en rangos específicos
+data$overall_range <- cut(data$overall, breaks = seq(40, 100, by = 10), labels = paste(seq(40, 90, by = 10), seq(49, 99, by = 10), sep = "-"))
+```
+
+```{r}
+# Dividir los datos en grupos basados en "overall_range"
+wage_groups <- split(data$wage, data$overall_range)
+
+# Crear un boxplot para cada grupo
+boxplot(wage_groups, main = "Boxplot de salario por puntuacion", xlab = "overall_range", ylab = "wage")
+```
+
+```{r}
+# Outliers original
+outliers_original <- length(boxplot.stats(data$wage)$out)
+outliers_original
+
+# Calcular las estadísticas del boxplot para cada grupo de "wage"
+stats_list <- lapply(wage_groups, boxplot.stats)
+
+# Calcular total outliers
+outliers_agrupados <- 0
+for (i in 1:length(stats_list)) {
+  outliers_agrupados <- outliers_agrupados + length(stats_list[[i]]$out)
+}
+outliers_agrupados
+```
+
+Efectivamente, el salario crece de forma exponencial en función de la puntuación del jugador, aunque el número de outliers sigue siendo bastante elevado.
+No obstante, no debemos tratar estos outliers a lo bruto, ya que afectaría al grupo completo de jugadores con una puntuación por encima de 90, mientras que este es de los que menos outliers tiene.
+Por lo tanto, vamos a tratar estos outliers por grupos de valoración.
+
+En este caso, podría tratarse de jugadores con un salario fuera de mercado y no acorde a su rendimiento, por lo que la aproximación más cercana que podemos hacer es reemplazar este salario por el límite superior o inferior del grupo en el que se encuentre.
+
+Por lo tanto, obtenemos los límites de cada grupo de rangos de puntuación, y acotamos los salarios de cada registro en función al rango de puntuación en el que se encuentre
+
+```{r}
+# Recibe un valor y un array de limites
+# Se busca el rango al que pertenece el valor por su puntuación y se acota el salario al limite de este rango
+acotar <- function(value, limits, lower_range, upper_range){
+  for (i in 1:length(limits)){
+    # Si pertenece a ese grupo y existe un salario registrado
+    if (value$overall >= lower_range[i] & value$overall <= upper_range[i] & !is.na(value$wage)){
+      # Se acota el salario
+      if(value$wage < limits[[i]][[1]])
+        value$wage <- limits[[i]][[1]]
+      if(value$wage > limits[[i]][[2]])
+        value$wage <- limits[[i]][[2]]
+    }
+  }
+  return(value)
+}
+
+# Obtener los límites superior e inferior del boxplot para cada grupo
+limits <- lapply(stats_list, function(stats) c(stats$stats[1], stats$stats[5]))
+
+# Crear variables para almacenar los límites superiores e inferiores
+upper_range <- vector("numeric", length(limits))
+lower_range <- vector("numeric", length(limits))
+
+# Recorrer el array limits y extraer los límites
+for (i in 1:length(limits)) {
+  range_name <- names(limits)[i]
+  range_values <- strsplit(range_name, "-")[[1]]
+  lower_range[i] <- as.numeric(range_values[1])
+  upper_range[i] <- as.numeric(range_values[2])
+}
+
+# Acotar cada registro
+for(i in 1:length(data$wage)){
+  data[i,] <- acotar(data[i,], limits, lower_range, upper_range)
+}
+```
+
+Volvemos a agrupar y visualizamos el nuevo boxplot.
+
+```{r}
+boxplot(data$wage)
+
+# Dividir los datos en grupos basados en "overall_range"
+wage_groups <- split(data$wage, data$overall_range)
+
+# Crear un boxplot para cada grupo
+boxplot(wage_groups, main = "Boxplot de salario por puntuacion", xlab = "overall_range", ylab = "wage")
+
+
+
+# Outliers original
+outliers_original <- length(boxplot.stats(data$wage)$out)
+outliers_original
+
+# Calcular las estadísticas del boxplot para cada grupo de "wage"
+stats_list <- lapply(wage_groups, boxplot.stats)
+
+# Calcular total outliers
+outliers_agrupados <- 0
+for (i in 1:length(stats_list)) {
+  outliers_agrupados <- outliers_agrupados + length(stats_list[[i]]$out)
+}
+outliers_agrupados
+```
+
+Gracias a esto hemos conseguido reducir el número de outliers en cada grupo.
+Aún se observan algunos devido a que los límites del boxplot se han alterado, pero vamos a dejarlo así ya que si no podríamos entrar en bucle.
+
+## 1.2. Valores ausentes
+
+En este apartado, limpiaremos el conjunto de datos de los valores ausentes.
+Concretamente, adoptaremos una estrategia sencilla que es eliminar las observaciones del conjunto de datos que tengan valores ausentes (NA's) en las variables *nation_team_id*, *nation_position* o *nation_jersey_number*.
+
+Para ello, seguiremos los siguientes pasos:
+
+1.  Eliminar los valores ausentes del conjunto de datos. Denominar al nuevo conjunto de datos *fifaclean*.
+2.  Comprobar cuántas observaciones tienen valores ausentes y reflexionar brevemente sobre cómo de preocupante es el problema de valores ausentes en estos datos.
+
+```{r}
+# Contar número de valores nulos en cada variable
+nulos_por_variable <- colSums(is.na(data))
+
+# Mostrar el resultado
+print(nulos_por_variable)
+```
+
+En la variable *nation_team_id* se observan muchos casos sin valor.
+No vamos a eliminar estas observaciones puesto que no son verdaderos missings, sino que simplemente indican que el jugador no ha jugado nunca con el equipo nacional.
+
+```{r}
+# Eliminar filas con valores nulos que no estén en 'nation_team_id'
+fifaclean <- data[complete.cases(data[, !colnames(data) %in% "nation_team_id"]), ]
+str(fifaclean)
+
+# Calcular el numero de valores ausentes como la diferencia de filas en ambos conjuntos
+valores_ausentes <- nrow(data) - nrow(fifaclean)
+valores_ausentes
+```
+
+Al obviar la variable *nation_team_id*, el número de valores ausentes es muy pequeño en comparación con el tamaño del dataset, por lo que podemos eliminar estos registros sin ningún problema.
+
+## 1.3. Creación de base de datos star
+
+Seleccionaremos aquellos jugadores que son los que más cobran semanalmente (estrellas).
+Para ello, vamos a utilizar la función **boxplot.stats()** para identificar lo valores atípicos y los guardaremos en la nueva base de datos llamada **star**.
+En el resto de apartados trabajaremos con este juego de datos.
+
+```{r}
+# Visualizar el boxplot
+boxplot(fifaclean$wage, main = "Boxplot de la variable wage", ylab = "Wage")
+```
+
+```{r}
+# Obtener los valores atípicos boxplot utilizando boxplot.stats()
+outliers <- boxplot.stats(fifaclean$wage)$out
+
+# Seleccionar los jugadores con valores atípicos en la variable wage
+star <- fifaclean[fifaclean$wage %in% outliers, ]
+
+# Mostrar el dataframe con los jugadores estrellas
+str(star)
+```
+
+Obtenemos un breve resumen del nuevo conjunto.
+
+```{r}
+summary(star)
+```
+
+# 2. Estadística descriptiva y visualización
+
+## 2.1. Salario
+
+Dado el conjunto star anterior, vamos a realizar un análisis descriptivo de la variable wage, en el que analizaremos la normalidad de los datos, para ver si el salario medio de las estrellas de fútbol es un valor representativo del conjunto de observaciones.
+
+```{r}
+hist(star$wage)
+```
+
+Visualmente apreciamos que los salarios no siguen una distribución normal, pero vamos a confirmarlo utilizando el test de Shaphiro-Wilk, visto a lo largo del curso, el cual se basa en la hipótesis nula de que los datos provienen de una población con una distribución normal.
+El resultado del test proporciona un valor p, que representa la probabilidad de que los datos provengan de una distribución normal.
+Si el valor p es menor que un nivel de significancia predefinido, se rechaza la hipótesis nula y se concluye que los datos no siguen una distribución normal.
+Por otro lado, si el valor p es mayor que el nivel de significancia, no se puede rechazar la hipótesis nula y se asume que los datos podrían seguir una distribución normal.
+Utilizaremos el nivel de significancia más común, **0.05** (95% de confianza).
+
+```{r}
+shapiro.test(star$wage)
+```
+
+Como cabía esperar, se obtiene un valor p muy pequeño, lo cual nos permite rechazar la hipótesis nula y afirmar que los datos no siguen una distribución normal.
+Por lo tanto, el valor promedio de los salarios no es un valor representativo de la muestra.
+
+## 2.2. Jugadores internacionales
+
+Vamos a identificar si un jugador es internacional o no a partir del valor de la variable nation_team_id.
+En concreto, el jugador es internacional si la variable nation_team_id toma un valor.
+Si no es internacional, esta variable toma un valor ausente.
+
+```{r}
+# Crear una nueva variable llamada "international" que indica si el jugador es internacional o no
+star$international <- ifelse(is.na(star$nation_team_id), "No", "Si")
+
+# Mostrar el dataframe con la nueva variable
+head(star)
+```
+
+A continuación, vamos a agrupar los jugadores por intenacionales y no internacionales y vamos a mostrar un box plot del salario para cada grupo.
+
+```{r}
+# Dividir los datos en grupos basados en "international"
+international_groups <- split(star$wage, star$international)
+
+# Crear un boxplot para cada grupo
+boxplot(international_groups, main = "Boxplot de salario por internacionalidad", xlab = "international", ylab = "wage")
+```
+
+Vemos que el salario es mayor para los jugadores que son convocados con su selección respecto a los que no son internacionales.
+
+## 2.3. Liga
+
+En el siguiente apartado, analizaremos si hay diferencias según las principales ligas.
+Crearemos una nueva variable *league* que indique si el jugador juega en la Premier League, Primera división española, a la Serie A italiana, a la primera división de la Bundesliga o a otra liga diferente a éstas.
+
+En primer lugar, vamos a convertir la variable original *league_name* en factor para ver el nombre con el que se denomina a las distintas ligas.
+
+```{r}
+star$league_name <- as.factor(star$league_name)
+summary(star$league_name)
+```
+
+A continuación, creamos la nueva variable con el criterio mencionado anteriormene.
+
+```{r}
+# Crear la nueva variable "league" con la desagrupación de las principales ligas
+star$league <- as.factor(ifelse(star$league_name == "English Premier League", "Premier League",
+                      ifelse(star$league_name == "Spain Primera Division", "La Liga",
+                            ifelse(star$league_name == "Italian Serie A", "Serie A",
+                                   ifelse(star$league_name == "French Ligue 1", "Ligue 1",
+                                          ifelse(star$league_name == "German 1. Bundesliga", "Bundesliga", "Otras Ligas"))))))
+
+# Visualizamos la nueva variable
+head(star)
+
+# Observaciones por categoría
+summary(star$league)
+```
+
+# 3. Estadística inferencial
+
+## 3.1. Intervalo de confianza de la media poblacional
+
+Vamos a calcular manualmente el intervalo de confianza al 95% (nivel de significancia igual a 0,05) de la media poblacional de la variable wage de los jugadores.
+
+El intervalo de confianza es un rango de valores en el que se espera que se encuentre el verdadero valor de un parámetro estadístico, como la media o la proporción, con cierto nivel de confianza.
+Es decir, es un intervalo de valores plausible para el parámetro en cuestión, que se calcula a partir de los datos muestrales y la teoría estadística.
+
+El nivel de confianza indica la probabilidad de que el verdadero valor del parámetro se encuentre dentro del intervalo de confianza.
+Por ejemplo, un intervalo de confianza del 95% indica que si se realizaran muchos estudios similares, en el 95% de ellos el intervalo de confianza cubriría el verdadero valor del parámetro.
+
+A pesar de obtener en el apartado anterior que los datos no siguen una distribución normal, gracias al tamaño de la muestra, por el **Teorema del Límite Central** podemos asumir la normalidad de los datos y calcular el intervalo con el test **t de Student**.
+
+Así, para calcular el intervalo de confianza de la variable wage al 95%, se necesitan los siguientes pasos:
+
+1.  Calcular la media muestral (x̄) y la desviación estándar muestral (s) de la variable "wage".
+
+2.  Calcular el error estándar de la media (SE), que se calcula dividiendo la desviación estándar muestral (s) entre la raíz cuadrada del tamaño de la muestra (n).
+
+3.  Determinar el valor crítico de la distribución t de Student para un nivel de confianza del 95% y los grados de libertad correspondientes (n-1).
+
+4.  Calcular el margen de error multiplicando el valor crítico de la distribución t (t\*) por el error estándar de la media (SE).
+
+5.  Calcular los límites inferior y superior del intervalo de confianza restando y sumando el margen de error a la media muestral (x̄).
+
+```{r}
+alfa <- 1-0.95
+
+# Funcion para calcular el intervalo de confianza
+calcularIntervaloConfianza <- function(data, alfa){
+  # Paso 1: Calcular la media muestral y la desviación estándar muestral
+  x_bar <- mean(data)
+  s <- sd(data)
+  
+  # Paso 2: Calcular el error estándar de la media
+  SE <- s / sqrt(length(data))
+  
+  # Paso 3: Determinar el valor crítico de la distribución t de Student
+  df <- length(data) - 1
+  t_star <- qnorm(alfa/2, lower.tail=FALSE)
+  
+  # Paso 4: Calcular el margen de error
+  margn_error <- t_star * SE
+  
+  # Paso 5: Calcular los límites inferior y superior del intervalo de confianza
+  limite_inferior <- x_bar - margn_error
+  limite_superior <- x_bar + margn_error
+  
+  return (c(limite_inferior, limite_superior))
+}
+
+# Se calcula el intervalo de confianza de wage
+intervalo_confianza <- calcularIntervaloConfianza(star$wage, alfa)
+
+# Mostrar el intervalo de confianza
+cat("El intervalo de confianza del 95% para la variable wage es [", intervalo_confianza[1], ",", intervalo_confianza[2], "].")
+```
+
+El intervalo de confianza del 95% [44297.39 , 47496.42] indica que, en base a los datos de muestra utilizados, podemos estar 95% seguros de que el verdadero valor promedio de la variable wage (esperanza de vida) en la población se encuentra dentro de este rango.
+
+Esto significa que si se realizaran múltiples muestras de la misma población y se calcularan los intervalos de confianza correspondientes, aproximadamente el 95% de esos intervalos incluirían el valor real del parámetro poblacional.
+
+## 3.2. Contraste de hipótesis para la diferencia de medias
+
+¿Podemos aceptar que las estrellas que juegan a primera de la liga española cobran en promedio lo mismo que el resto de jugadores estrellas?
+(nivel de confianza del 95 %)
+
+### 3.2.1. Hipótesis nula y alternativa
+
+-   *Hipótesis nula (H0)*: Las estrellas que juegan a primera de la liga española cobran en promedio lo mismo que el resto de jugadores estrellas.
+
+-   *Hipótesis alternativa (H1)*: Las estrellas que juegan a primera de la liga española no cobran en promedio lo mismo que el resto de jugadores estrellas.
+
+### \*\*\* Pendiente de terminar \*\*\*
+
+### 3.2.2. Tipo de contraste
+
+Aplicaremos un contraste de medias para dos muestras independientes con varianzas desconocidas distintas, bilateral, ya que no sabemos si el salario es igual en la liga española que en el resto de ligas, y queremos comprobar si existen diferencias significativas entre ambos casos.
+
+```{r}
+liga_española <- star[star$league == "La Liga",]
+nrow(liga_española)
+
+
+otra_liga <- star[star$league != "La Liga",]
+nrow(otra_liga)
+```
+
+Dado que en ambos casos la muestra es considerablemente grande (n\>30), podemos aplicar el **teorema del límite central** por el cual podemos asumir la normalidad de los datos.
+
+```{r}
+var.test(liga_española$wage, otra_liga$wage)
+```
+
+# 4. Modelo de regresión lineal
+
+Queremos investigar qué variables explican el valor de mercado del jugador.
+Estimaremos un modelo de regresión lineal múltiple que tenga como variables explicativas: international, wage, overall, age y league, y como variable dependiente value_eur expresado en millones de euros.
+
+Para ello, utilizaremos la función *lm()*, que se utiliza para ajustar modelos lineales ordinarios, también conocidos como modelos de regresión lineal.
+Estos modelos asumen que los errores siguen una distribución normal y se ajustan utilizando el método de mínimos cuadrados ordinarios (OLS, por sus siglas en inglés).
+Estos son adecuados cuando se trabaja con variables de respuesta continua.
+
+Además, como la variable *value_eur* tiene valores muy grandes (del orden de varios millones de euros), para calcular el modelo de regresión expresaremos las unidades en millones en lugar de en unidades de euros directamente.
+
+También estableceremos La Liga como la categoría de referencia en la variable "league".
+
+```{r}
+# Convertir unidades a millones
+star$value_eur <- star$value_eur / 1000000
+
+# Establecer La Liga como la categoría de referencia en la variable "league"
+star$league <- relevel(star$league, ref = "La Liga")
+
+modelo <- lm(value_eur ~ international + wage + overall + age + league, data=star)
+summary(modelo)
+```
+
+El modelo muestra un R-cuadrado múltiple de 0.8238, lo que indica que aproximadamente el 82.38% de la variabilidad en el valor de mercado del jugador se explica por las variables explicativas incluidas en el modelo.
+Esto sugiere que el modelo tiene un buen ajuste y es capaz de capturar una gran parte de la variación en la variable dependiente.
+
+Variables explicativas:
+
+-   international: Que un jugador sea internacional se relaciona con un aumento de 1.403 en el valor de mercado del jugador, manteniendo constantes las demás variables.
+
+-   wage: Un incremento de una unidad en la variable wage está asociado con un aumento de 0.0001754 millones de euros en el valor de mercado del jugador, manteniendo las demás variables constantes.
+
+-   overall: Un incremento de una unidad en la variable overall se relaciona con un aumento de 2.583 millones de euros en el valor de mercado del jugador, manteniendo las demás variables constantes.
+
+-   age: Un incremento de una unidad en la variable age está asociado con una disminución de 1.299 millones de euros en el valor de mercado del jugador, manteniendo las demás variables constantes.
+
+-   league: El modelo incluye varias variables dummy para representar diferentes ligas, como Bundesliga, Ligue 1, Otras Ligas, Premier League y Serie A. La interpretación de estos coeficientes depende de la referencia que se elija.
+    En este caso, se toma como referencia la categoría "leagueLa Liga" (no incluida en el resumen).
+    Por lo tanto, los coeficientes indican la diferencia en el valor de mercado en comparación con la referencia.
+
+    -   leagueBundesliga: No hay evidencia suficiente para afirmar que haya una diferencia significativa en el valor de mercado entre la Bundesliga y La Liga.
+
+    -   leagueLigue 1: No hay evidencia suficiente para afirmar que haya una diferencia significativa en el valor de mercado entre Ligue 1 y La Liga.
+
+    -   leagueOtras Ligas: No hay evidencia suficiente para afirmar que haya una diferencia significativa en el valor de mercado entre otras ligas y La Liga.
+
+    -   leaguePremier League: Un incremento de una unidad en la variable leaguePremier League está asociado con una disminución de 3.913 millones de euros en el valor de mercado del jugador en comparación con La Liga, manteniendo las demás variables constantes.
+
+    -   leagueSerie A: Un incremento de una unidad en la variable leagueSerie A está asociado con una disminución de 1.372 millones de euros en el valor de mercado del jugador en comparación con La Liga, manteniendo las demás variables constantes.
+
+En resumen, el modelo indica que las variables international, wage, overall y age tienen una contribución significativa en la explicación del valor de mercado de los jugadores.
+Las variables leagueLa Liga, leagueBundesliga, leagueLigue 1 y leagueOtras LigasA no muestran una relación significativa con el valor de mercado.
+Las variables leaguePremier League y leagueSerie A muestran una relación negativa y significativa, lo que sugiere que los jugadores de la Premier League y de la Serie A tienden a tener un valor de mercado más bajo en comparación con La Liga.
+
+# 5. Regresión logística
+
+## 5.1. Modelo predictivo
+
+Ajustaremos un modelo predictivo basado en la regresión logística para predecir la probabilidad de ser internacional (es decir, de jugar en la selección nacional) en función de las variables explicativas utilizadas anteriormente en el modelo de regresión lineal.
+Incluiremos también la variable value_eur como variable explicativa.
+
+Para ello, debemos convertir la variable international a una variable binaria, donde contentrá el valor 1 en caso de contener "Si" y 0 en caso contratio.
+
+```{r}
+# Convertir "international" a variable binaria (0 y 1)
+star$international <- ifelse(star$international == "Si", 1, 0)
+```
+
+Además, dividimos el conjunto de datos en datos de entrenamiento y datos de prueba, donde reservaremos un 80% de los datos para entrenar y un 20% para la fase de testeo.
+
+```{r}
+# Establecer una semilla aleatoria para reproducibilidad
+set.seed(1)
+
+# Realizar la división de datos
+train_indices <- createDataPartition(star[["international"]], p = 0.8, list = FALSE)
+
+# Crear el conjunto de entrenamiento utilizando los índices generados
+x_train <- star[train_indices, which(names(star) != "international")]
+y_train <- star[train_indices, "international"]
+
+# Crear el conjunto de prueba excluyendo las filas del conjunto de entrenamiento
+x_test <- star[-train_indices, which(names(star) != "international")]
+y_test <- star[-train_indices, "international"]
+```
+
+```{r}
+
+# Ajustar el modelo de regresión logística
+modelo_logistico <- glm(y_train ~ value_eur + wage + overall + age + league, data=x_train, family="binomial")
+
+# Mostrar el resumen del modelo
+summary(modelo_logistico)
+```
+
+En el modelo de regresión logística ajustado, se pueden interpretar los resultados de la siguiente manera:
+
+1.  Coeficientes: Los coeficientes estimados representan el cambio esperado en log-odds de ser internacional para cada unidad de cambio en la variable correspondiente, manteniendo constantes las demás variables en el modelo.
+
+2.  Variables significativas: Al observar los valores de p (Pr(\>\|z\|)), se puede determinar la significancia estadística de cada variable.
+    Las variables con valores de p significativamente pequeños (p \< 0.05) se consideran significativas, lo que indica que tienen una relación estadísticamente significativa con la probabilidad de ser internacional.
+
+En el modelo proporcionado, las siguientes variables son significativas:
+
+-   overall: Tiene un coeficiente positivo significativo (0.2297) y un valor de p muy pequeño (3.25e-10).
+    Esto indica que un aumento en la calificación general del jugador está asociado con un aumento en la probabilidad de ser internacional.
+
+-   age: Tiene un coeficiente negativo significativo (-0.0712) y un valor de p pequeño (0.000985).
+    Esto indica que a medida que la edad del jugador aumenta, la probabilidad de ser internacional disminuye.
+
+-   leagueBundesliga, leagueOtras Ligas, leaguePremier League y leagueSerie A: Estas variables indican la liga en la que juega el jugador en comparación con la categoría de referencia (La Liga).
+    Todas ellas tienen coeficientes significativos, lo que sugiere que la liga en la que juega el jugador puede tener un efecto significativo en la probabilidad de ser internacional.
+
+3.  Calidad del modelo: La desviación residual (Residual deviance) proporciona una medida de la bondad de ajuste del modelo. Un valor más bajo de la desviación residual indica un mejor ajuste del modelo a los datos observados. En este caso, la desviación residual es de 1529.4, que es más bajo que el valor de la desviación nula (Null deviance) de 1821.3, lo que indica que el modelo ajustado proporciona un ajuste mejor que el modelo nulo. Sin embargo, para evaluar completamente la calidad del modelo, también se pueden considerar otras medidas como el AIC (1549.4) y compararlo con el AIC de otros modelos de regresión.
+
+En resumen, el modelo sugiere que las variables "overall", "age" y la liga en la que juega el jugador son significativas para predecir la probabilidad de ser internacional.
+La calidad del modelo se considera relativamente buena, ya que muestra un ajuste mejor que el modelo nulo.
+
+## 5.2. Matriz de confusión
+
+A continuación, analizamos la precisión del modelo, comparando la predicción del modelo sobre los mismos datos del conjunto de datos.
+Asumiremos que la predicción del modelo es 1 (internacional) si la probabilidad del modelo de regresión logística es superior o igual a 0.5 y 0 en caso contrario.
+Para ello, calculamos manualmente la matriz de confusión.
+
+```{r}
+# Obtener las probabilidades estimadas del modelo
+prob_est <- predict(modelo_logistico, x_test)
+
+# Establecer el umbral de decisión en 0.5
+umbral <- 0.5
+
+# Generar las predicciones basadas en el umbral
+predicciones <- ifelse(prob_est >= umbral, 1, 0)
+
+# Crear la matriz de confusión
+confusion_matrix <- table(y_test, predicciones)
+confusion_matrix
+```
+
+```{r}
+# Acceder a los valores
+TP <- confusion_matrix[2, 2]  # Verdaderos positivos
+TN <- confusion_matrix[1, 1]  # Verdaderos negativos
+FP <- confusion_matrix[1, 2]  # Falsos positivos
+FN <- confusion_matrix[2, 1]  # Falsos negativos
+
+# Calcular sensibilidad y especificidad
+sensibilidad <- TP / (TP + FN)
+sensibilidad
+especificidad <- TN / (TN + FP)
+especificidad
+```
+
+La matriz de confusión proporcionada muestra los resultados de las predicciones realizadas por el modelo de regresión logística en comparación con los valores reales.
+
+La sensibilidad se refiere a la capacidad del modelo para identificar correctamente los casos positivos.
+Su valor es 0.07692308, lo que indica que el modelo tiene una baja sensibilidad para predecir correctamente los casos de jugadores internacionales.
+
+La especificidad se refiere a la capacidad del modelo para identificar correctamente los casos negativos.
+Su valor es 0.9948718, lo que indica que el modelo tiene una alta especificidad para predecir correctamente los casos de jugadores no internacionales.
+
+En resumen, el modelo tiene una alta especificidad pero una baja sensibilidad.
+Esto significa que el modelo es bueno para predecir correctamente los casos de jugadores no internacionales, pero tiene dificultades para identificar correctamente los casos de jugadores internacionales.
+Esto se debe a que la muestra con la que ha sido entrenado no está equilibrada y tiene muchos mas jugadores no internacionales que internacionales.
+
+## 5.3. Predicción
+
+Aplicaremos el modelo de regresión logística anterior para predecir la probabilidad que sea internacional un jugador valorado en 100 millones, 30.000EUR de salario, puntuación de 90, edad 30 años y juega a la premier.
+
+Para ello, obtenemos los coeficientes del modelo, y calculamos el logaritmo de la razón de probabilidades (log_odds) como la suma de los productos de los coeficientes del modelo por los valores de las variables explicativas.
+
+Para obtener la probabilidad en sí, debemos transformar el logaritmo de las odds en una probabilidad mediante la función de enlace inversa, que en el caso de la regresión logística es la función logística (también conocida como función sigmoide).
+La función logística toma el logaritmo de las odds y lo transforma en un valor entre 0 y 1, que representa la probabilidad de que el evento ocurra.
+La fórmula **`exp(log_odds) / (1 + exp(log_odds))`** es la forma de aplicar la función logística para obtener la probabilidad correspondiente a los valores de las variables explicativas en el modelo de regresión logística.
+
+```{r}
+# Valores de las variables
+value_eur <- 100
+wage <- 30000
+overall <- 90
+age <- 30
+league <- "Premier League"
+
+# Coeficientes del modelo
+coeficientes <- coef(modelo_logistico)
+
+# Cálculo de la probabilidad
+log_odds <- coeficientes["(Intercept)"] + 
+  coeficientes["value_eur"] * value_eur + 
+  coeficientes["wage"] * wage + 
+  coeficientes["overall"] * overall + 
+  coeficientes["age"] * age + 
+  coeficientes["leaguePremier League"]
+
+probabilidad <- exp(log_odds) / (1 + exp(log_odds))
+probabilidad
+```
+
+Obtenemos que este jugador tiene una probabilidad de 86.7% de ser internacional.
+Para verificar este resultado, vamos a utilizar la función predict, junto a parámetro **type="response"**, que indica que se desea obtener la respuesta del modelo, es decir, la probabilidad de pertenecer a la clase positiva (en este caso, ser internacional).
+Si se omite este parámetro, por defecto se obtendrá la predicción en la escala lineal del modelo, que en el caso de la regresión logística corresponde al logaritmo de la razón de probabilidades (log-odds).
+
+```{r}
+# Valores de las variables para la predicción
+new_data <- data.frame(value_eur = 100, wage = 30000, overall = 90, age = 30, league = "Premier League")
+
+# Aplicar la función predict para obtener la probabilidad
+probabilidad <- predict(modelo_logistico, newdata = new_data, type = "response")
+probabilidad
+
+```
+
+Observamos que la probabilidad coincide y por tanto damos este cálculo por válido.
+
+# 6. ANOVA unifactorial
+
+A continuación, realizaremos un análisis de varianza, donde deseamos comparar el salario entre las principales ligas.
+El análisis de varianza consiste a evaluar si la variabilidad de una variable dependiente puede explicarse a partir de una o varias variables independientes, denominadas factores.
+En el supuesto que nos ocupa, nos interesa evaluar si la variabilidad de la variable wage puede explicarse por el tipo de liga.
+Por lo tanto, responderemos a las siguientes preguntas:
+
+-   ¿Existen diferencias en el salario (wage) entre las diferentes ligas?
+
+-   Si existen diferencias, ¿entre qué ligas se dan estas diferencias?
+
+## 6.1. Visualización gráfica
+
+En primer lugar, vamos a agrupar los jugadores por ligas y vamos a visualizar un boxplot de los salarios
+
+```{r}
+# Agrupar el dataframe por la variable "league"
+grouped_star <- group_by(star, league)
+
+# Crear el boxplot
+boxplot(wage ~ league, data = grouped_star, main = "Boxplot de salario por liga",
+        xlab = "League", ylab = "Wage")
+```
+
+Vemos que aparentemente la Premier League tiene salarios superiores al resto de ligas y que las ligas que no son principales (Otras Ligas) tienen un salario menor que las ligas principales.
+Para confirmarlo, vamos a realizar el contraste de hipótesis mediante el test ANOVA.
+
+## 6.2. Hipótesis nula y alternativa
+
+-   **Hipótesis nula** (H0): No existen diferencias en el salario (wage) entre las diferentes ligas.
+
+-   **Hipótesis alternativa** (H1): Existen diferencias en el salario (wage) entre al menos dos de las diferentes ligas.
+
+## 6.3. Modelo
+
+A continuación, calculamos el análisis de la varianza.
+Para ello, utilizamos la función *aov()*, que realiza el análisis de varianza (ANOVA) en modelos lineales.
+
+```{r}
+modelo_anova <- aov(wage ~ league, star)
+summary(modelo_anova)
+```
+
+El análisis de varianza realizado muestra que existe una diferencia significativa en el salario (wage) entre las diferentes ligas.
+Esto se evidencia por el valor extremadamente pequeño del p-valor (\<2e-16), el cual indica que la probabilidad de obtener una diferencia tan grande o mayor entre las ligas por azar es prácticamente nula.
+Por lo tanto, podemos rechazar la hipótesis nula de igualdad de salarios entre las ligas y concluir que existen diferencias significativas en el salario entre ellas.
+
+Para determinar entre cuáles ligas se dan estas diferencias
+
+
